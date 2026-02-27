@@ -54,10 +54,18 @@ export async function POST(request, { params }) {
     // Calculate subtotal from invoice items (at original prices)
     const calculatedSubtotal = invoiceItems.reduce((sum, item) => sum + item.subtotal, 0);
 
-    // Calculate due date (default 7 days from now)
-    const invoiceDueDate = dueDate
-      ? new Date(dueDate)
-      : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    // Calculate due date - only for unpaid/partial invoices
+    let invoiceDueDate;
+    if (paymentStatus === 'paid' || paid >= order.finalAmount) {
+      // No due date for fully paid invoices
+      invoiceDueDate = null;
+    } else if (dueDate) {
+      // Use provided due date
+      invoiceDueDate = new Date(dueDate);
+    } else {
+      // Default 7 days from now for unpaid/partial
+      invoiceDueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    }
 
     // Calculate payment amounts
     const paid = parseFloat(paidAmount) || 0;
@@ -76,7 +84,8 @@ export async function POST(request, { params }) {
     const year = new Date().getFullYear();
     const invoiceNumber = `INV${year}${String(invoiceCount + 1).padStart(5, '0')}`;
 
-    const invoice = await Invoice.create({
+    // Prepare invoice data
+    const invoiceData = {
       invoiceNumber,
       order: order._id,
       customer: order.customer,
@@ -89,12 +98,20 @@ export async function POST(request, { params }) {
       balanceAmount: balance,
       status: invoiceStatus,
       issueDate: new Date(),
-      dueDate: invoiceDueDate,
       paymentTerms: paymentTerms || 'Due on receipt',
-      notes,
-      terms,
       createdBy: authUser.userId,
-    });
+    };
+
+    // Only add dueDate if it's not null
+    if (invoiceDueDate !== null) {
+      invoiceData.dueDate = invoiceDueDate;
+    }
+
+    // Add optional fields if provided
+    if (notes) invoiceData.notes = notes;
+    if (terms) invoiceData.terms = terms;
+
+    const invoice = await Invoice.create(invoiceData);
 
     // Create transaction if payment is made
     if (paid > 0) {

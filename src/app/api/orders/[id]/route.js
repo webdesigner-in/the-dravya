@@ -56,20 +56,24 @@ export async function PUT(request, { params }) {
       );
     }
 
-    // Only admins can update orders
-    if (authUser.role !== 'admin') {
-      return NextResponse.json(
-        { error: 'Unauthorized. Only admins can update orders.' },
-        { status: 403 }
-      );
-    }
-
     await connectDB();
 
     const { id } = await params;
     const body = await request.json();
     
-    console.log('Updating order:', id, 'with data:', body);
+    // Check if this is a simple status/payment update (allowed for all) or full edit (admin only)
+    const isSimpleUpdate = (body.status || body.paymentStatus || body.paidAmount !== undefined) && 
+                           !body.items && 
+                           !body.deliveryDate && 
+                           !body.notes;
+
+    // Only admins can do full order edits (items, delivery date, notes)
+    if (!isSimpleUpdate && authUser.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'Unauthorized. Only admins can edit order details.' },
+        { status: 403 }
+      );
+    }
 
     // If items are being updated, we need to recalculate totals and manage stock
     if (body.items) {
@@ -169,12 +173,6 @@ export async function PUT(request, { params }) {
       );
     }
 
-    console.log('Order updated successfully:', {
-      id: order._id,
-      totalAmount: order.totalAmount,
-      finalAmount: order.finalAmount
-    });
-
     return NextResponse.json({
       success: true,
       order,
@@ -211,7 +209,9 @@ export async function DELETE(request, { params }) {
     await connectDB();
 
     const { id } = await params;
-    const order = await Order.findByIdAndDelete(id);
+    
+    // Get the order with populated items to restore stock
+    const order = await Order.findById(id).populate('items.product');
 
     if (!order) {
       return NextResponse.json(
@@ -220,9 +220,37 @@ export async function DELETE(request, { params }) {
       );
     }
 
+    // Import models needed for cascade deletion
+    const Product = (await import('@/models/Product')).default;
+    const Invoice = (await import('@/models/Invoice')).default;
+    const Transaction = (await import('@/models/Transaction')).default;
+
+    // 1. Restore stock for all items in the order
+    for (const item of order.items) {
+      const product = await Product.findById(item.product._id);
+      if (product) {
+        product.stock += item.quantity;
+        await product.save();
+      }
+    }
+
+    // 2. Delete all related invoices
+    const deletedInvoices = await Invoice.deleteMany({ order: id });
+
+    // 3. Delete all related transactions
+    const deletedTransactions = await Transaction.deleteMany({ order: id });
+
+    // 4. Finally, delete the order
+    await Order.findByIdAndDelete(id);
+
     return NextResponse.json({
       success: true,
-      message: 'Order deleted successfully',
+      message: 'Order and all related records deleted successfully',
+      details: {
+        stockRestored: order.items.length,
+        invoicesDeleted: deletedInvoices.deletedCount,
+        transactionsDeleted: deletedTransactions.deletedCount,
+      },
     });
   } catch (error) {
     console.error('Delete order error:', error);

@@ -82,7 +82,8 @@ const InvoiceSchema = new mongoose.Schema(
     },
     dueDate: {
       type: Date,
-      required: true,
+      required: false,
+      default: null,
     },
     paymentTerms: {
       type: String,
@@ -117,4 +118,9 @@ InvoiceSchema.index({ status: 1 });
 InvoiceSchema.index({ issueDate: 1 });
 InvoiceSchema.index({ dueDate: 1 });
 
-export default mongoose.models.Invoice || mongoose.model('Invoice', InvoiceSchema);
+// Delete the model if it exists to force reload with new schema
+if (mongoose.models.Invoice) {
+  delete mongoose.models.Invoice;
+}
+
+export default mongoose.model('Invoice', InvoiceSchema);

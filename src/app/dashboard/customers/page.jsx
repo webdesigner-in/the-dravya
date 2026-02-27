@@ -576,32 +576,32 @@ export default function CustomersPage() {
               {filteredCustomers.map((customer) => (
                 <Card key={customer._id} className="hover:shadow-md transition-shadow">
                   <CardContent className="p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 space-y-2">
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-lg font-semibold">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 space-y-2 min-w-0">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                          <h3 className="text-base sm:text-lg font-semibold truncate">
                             {customer.name}
                           </h3>
-                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded capitalize">
+                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded capitalize w-fit">
                             {customer.customerType}
                           </span>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                           <div className="flex items-center gap-2 text-muted-foreground">
-                            <Phone className="h-4 w-4" />
-                            <span>{customer.phone}</span>
+                            <Phone className="h-4 w-4 shrink-0" />
+                            <span className="truncate">{customer.phone}</span>
                           </div>
                           {customer.email && (
                             <div className="flex items-center gap-2 text-muted-foreground">
-                              <Mail className="h-4 w-4" />
-                              <span>{customer.email}</span>
+                              <Mail className="h-4 w-4 shrink-0" />
+                              <span className="truncate">{customer.email}</span>
                             </div>
                           )}
                           {customer.address?.city && (
                             <div className="flex items-center gap-2 text-muted-foreground">
-                              <MapPin className="h-4 w-4" />
-                              <span>
+                              <MapPin className="h-4 w-4 shrink-0" />
+                              <span className="truncate">
                                 {customer.address.area}, {customer.address.city}
                               </span>
                             </div>
@@ -620,9 +620,9 @@ export default function CustomersPage() {
                         )}
                       </div>
 
-                      <div className="flex gap-1">
+                      <div className="flex flex-col sm:flex-row gap-1 shrink-0">
                         <Link href={`/dashboard/orders?customer=${customer._id}`}>
-                          <Button variant="outline" size="sm">
+                          <Button variant="outline" size="sm" className="w-full sm:w-auto">
                             Orders
                           </Button>
                         </Link>

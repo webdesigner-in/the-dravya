@@ -6,6 +6,7 @@ import { getAuthUser } from '@/lib/auth';
 // GET single transaction
 export async function GET(request, { params }) {
   try {
+    const { id } = await params;
     const authUser = await getAuthUser();
 
     if (!authUser) {
@@ -25,7 +26,7 @@ export async function GET(request, { params }) {
 
     await connectDB();
 
-    const transaction = await Transaction.findById(params.id)
+    const transaction = await Transaction.findById(id)
       .populate('customer', 'name phone')
       .populate('order', 'orderNumber')
       .populate('createdBy', 'name');
@@ -53,6 +54,7 @@ export async function GET(request, { params }) {
 // PUT update transaction
 export async function PUT(request, { params }) {
   try {
+    const { id } = await params;
     const authUser = await getAuthUser();
 
     if (!authUser) {
@@ -87,7 +89,7 @@ export async function PUT(request, { params }) {
 
     await connectDB();
 
-    const transaction = await Transaction.findById(params.id);
+    const transaction = await Transaction.findById(id);
 
     if (!transaction) {
       return NextResponse.json(
@@ -123,7 +125,7 @@ export async function PUT(request, { params }) {
     }
 
     const updatedTransaction = await Transaction.findByIdAndUpdate(
-      params.id,
+      id,
       updateData,
       { returnDocument: 'after', runValidators: true }
     )
@@ -147,6 +149,7 @@ export async function PUT(request, { params }) {
 // DELETE transaction
 export async function DELETE(request, { params }) {
   try {
+    const { id } = await params;
     const authUser = await getAuthUser();
 
     if (!authUser) {
@@ -166,7 +169,7 @@ export async function DELETE(request, { params }) {
 
     await connectDB();
 
-    const transaction = await Transaction.findById(params.id);
+    const transaction = await Transaction.findById(id);
 
     if (!transaction) {
       return NextResponse.json(
@@ -175,7 +178,7 @@ export async function DELETE(request, { params }) {
       );
     }
 
-    await Transaction.findByIdAndDelete(params.id);
+    await Transaction.findByIdAndDelete(id);
 
     return NextResponse.json({
       success: true,

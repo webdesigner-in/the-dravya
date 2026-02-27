@@ -229,7 +229,7 @@ function generateInvoiceHTML(invoice) {
     </div>
     <div class="invoice-details">
       <p><strong>Issue Date:</strong> ${new Date(invoice.issueDate).toLocaleDateString()}</p>
-      <p><strong>Due Date:</strong> ${new Date(invoice.dueDate).toLocaleDateString()}</p>
+      ${invoice.dueDate ? `<p><strong>Due Date:</strong> ${new Date(invoice.dueDate).toLocaleDateString()}</p>` : ''}
       <p><strong>Payment Terms:</strong> ${invoice.paymentTerms}</p>
       <p><strong>Status:</strong> ${invoice.status.toUpperCase()}</p>
       ${invoice.status === 'paid' ? '<div class="paid-stamp">✓ PAID</div>' : ''}

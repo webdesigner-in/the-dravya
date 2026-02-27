@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Invoice from '@/models/Invoice';
-import Customer from '@/models/Customer';
 import Order from '@/models/Order';
 import Product from '@/models/Product';
-import User from '@/models/User';
 import { getAuthUser } from '@/lib/auth';
 
 // GET single invoice
@@ -22,10 +20,11 @@ export async function GET(request, { params }) {
     await connectDB();
 
     const { id } = await params;
+
     const invoice = await Invoice.findById(id)
       .populate('customer', 'name phone email address')
       .populate('order', 'orderNumber')
-      .populate('items.product', 'name sku size bottlesPerCarton')
+      .populate('items.product', 'name sku')
       .populate('createdBy', 'name email');
 
     if (!invoice) {
@@ -48,7 +47,7 @@ export async function GET(request, { params }) {
   }
 }
 
-// PUT update invoice
+// PUT update invoice (admin only)
 export async function PUT(request, { params }) {
   try {
     const authUser = await getAuthUser();
@@ -60,19 +59,29 @@ export async function PUT(request, { params }) {
       );
     }
 
+    // Only admins can edit invoices
+    if (authUser.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'Forbidden - Admin access only' },
+        { status: 403 }
+      );
+    }
+
+    const body = await request.json();
+    const {
+      status,
+      paidAmount,
+      dueDate,
+      paymentTerms,
+      notes,
+      terms,
+    } = body;
+
     await connectDB();
 
     const { id } = await params;
-    const body = await request.json();
 
-    const invoice = await Invoice.findByIdAndUpdate(
-      id,
-      { $set: body },
-      { returnDocument: 'after', runValidators: true }
-    )
-      .populate('customer', 'name phone email address')
-      .populate('order', 'orderNumber')
-      .populate('items.product', 'name sku size bottlesPerCarton');
+    const invoice = await Invoice.findById(id);
 
     if (!invoice) {
       return NextResponse.json(
@@ -81,9 +90,51 @@ export async function PUT(request, { params }) {
       );
     }
 
+    // Update fields
+    if (status) invoice.status = status;
+    if (paidAmount !== undefined) {
+      invoice.paidAmount = parseFloat(paidAmount);
+      invoice.balanceAmount = invoice.totalAmount - invoice.paidAmount;
+      
+      // Auto-update status based on payment
+      if (invoice.paidAmount >= invoice.totalAmount) {
+        invoice.status = 'paid';
+      } else if (invoice.paidAmount > 0) {
+        invoice.status = 'partial';
+      }
+    }
+    if (dueDate) invoice.dueDate = dueDate;
+    if (paymentTerms) invoice.paymentTerms = paymentTerms;
+    if (notes !== undefined) invoice.notes = notes;
+    if (terms !== undefined) invoice.terms = terms;
+
+    await invoice.save();
+
+    // Update order payment status if needed
+    if (paidAmount !== undefined) {
+      const order = await Order.findById(invoice.order);
+      if (order) {
+        order.paidAmount = invoice.paidAmount;
+        if (invoice.paidAmount >= invoice.totalAmount) {
+          order.paymentStatus = 'paid';
+        } else if (invoice.paidAmount > 0) {
+          order.paymentStatus = 'partial';
+        } else {
+          order.paymentStatus = 'unpaid';
+        }
+        await order.save();
+      }
+    }
+
+    const updatedInvoice = await Invoice.findById(id)
+      .populate('customer', 'name phone email address')
+      .populate('order', 'orderNumber')
+      .populate('items.product', 'name sku')
+      .populate('createdBy', 'name email');
+
     return NextResponse.json({
       success: true,
-      invoice,
+      invoice: updatedInvoice,
     });
   } catch (error) {
     console.error('Update invoice error:', error);
@@ -94,22 +145,31 @@ export async function PUT(request, { params }) {
   }
 }
 
-// DELETE invoice
+// DELETE invoice (admin only)
 export async function DELETE(request, { params }) {
   try {
     const authUser = await getAuthUser();
 
-    if (!authUser || authUser.role !== 'admin') {
+    if (!authUser) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
 
+    // Only admins can delete invoices
+    if (authUser.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'Forbidden - Admin access only' },
+        { status: 403 }
+      );
+    }
+
     await connectDB();
 
     const { id } = await params;
-    const invoice = await Invoice.findByIdAndDelete(id);
+
+    const invoice = await Invoice.findById(id);
 
     if (!invoice) {
       return NextResponse.json(
@@ -117,6 +177,9 @@ export async function DELETE(request, { params }) {
         { status: 404 }
       );
     }
+
+    // Delete the invoice
+    await Invoice.findByIdAndDelete(id);
 
     return NextResponse.json({
       success: true,

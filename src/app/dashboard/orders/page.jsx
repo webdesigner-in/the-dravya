@@ -115,6 +115,7 @@ export default function OrdersPage() {
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
   const [sortBy, setSortBy] = useState("date");
+  const [customerSearchQuery, setCustomerSearchQuery] = useState("");
 
   const [formData, setFormData] = useState({
     customer: customerIdFromUrl || "",
@@ -437,6 +438,7 @@ export default function OrdersPage() {
       deliveryDate: "",
       notes: "",
     });
+    setCustomerSearchQuery(""); // Reset customer search
   };
 
   const handleSubmit = async (e) => {
@@ -600,8 +602,6 @@ export default function OrdersPage() {
       paidAmount: newTotalPaid
     };
 
-    console.log("Updating order with:", updateData);
-
     try {
       const response = await fetch(`/api/orders/${selectedOrder._id}`, {
         method: "PUT",
@@ -610,7 +610,6 @@ export default function OrdersPage() {
       });
 
       const data = await response.json();
-      console.log("API Response:", data);
 
       if (!response.ok) {
         throw new Error(data.error || "Failed to update payment");
@@ -753,11 +752,43 @@ export default function OrdersPage() {
                       <SelectValue placeholder="Select customer" />
                     </SelectTrigger>
                     <SelectContent className="max-h-[300px]">
-                      {customers.map((customer) => (
-                        <SelectItem key={customer._id} value={customer._id}>
-                          {customer.name} - {customer.phone}
-                        </SelectItem>
-                      ))}
+                      <div className="sticky top-0 bg-white p-2 border-b z-10">
+                        <div className="relative">
+                          <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                          <Input
+                            placeholder="Search customers..."
+                            value={customerSearchQuery}
+                            onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                            className="pl-8 h-9 text-sm"
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => e.stopPropagation()}
+                          />
+                        </div>
+                      </div>
+                      {customers
+                        .filter((customer) => {
+                          const searchLower = customerSearchQuery.toLowerCase();
+                          return (
+                            customer.name.toLowerCase().includes(searchLower) ||
+                            customer.phone.includes(customerSearchQuery)
+                          );
+                        })
+                        .map((customer) => (
+                          <SelectItem key={customer._id} value={customer._id}>
+                            {customer.name} - {customer.phone}
+                          </SelectItem>
+                        ))}
+                      {customers.filter((customer) => {
+                        const searchLower = customerSearchQuery.toLowerCase();
+                        return (
+                          customer.name.toLowerCase().includes(searchLower) ||
+                          customer.phone.includes(customerSearchQuery)
+                        );
+                      }).length === 0 && (
+                        <div className="p-4 text-center text-sm text-gray-500">
+                          No customers found
+                        </div>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1316,8 +1347,8 @@ export default function OrdersPage() {
                           </Button>
                         )}
 
-                        {/* Delete Button - Only for Cancelled Orders */}
-                        {order.status === 'cancelled' && (
+                        {/* Delete Button - Only for Cancelled Orders and Admin Only */}
+                        {order.status === 'cancelled' && isAdmin && (
                           <Button
                             size="sm"
                             variant="destructive"
@@ -1880,14 +1911,12 @@ export default function OrdersPage() {
                 >
                   Close
                 </Button>
-                {isAdmin && (
-                  <Button
-                    onClick={handleEditOrder}
-                    className="w-full sm:w-auto"
-                  >
-                    Edit Order
-                  </Button>
-                )}
+                <Button
+                  onClick={handleEditOrder}
+                  className="w-full sm:w-auto"
+                >
+                  Edit Order
+                </Button>
               </>
             ) : (
               <>

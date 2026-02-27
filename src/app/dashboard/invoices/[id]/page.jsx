@@ -223,7 +223,7 @@ export default function InvoiceDetailPage() {
                 <p className="text-xs sm:text-sm">
                   <span className="text-muted-foreground">Due Date:</span>{" "}
                   <span className="font-medium">
-                    {new Date(invoice.dueDate).toLocaleDateString()}
+                    {invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : "N/A (Paid in Full)"}
                   </span>
                 </p>
                 <p className="text-xs sm:text-sm">

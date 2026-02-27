@@ -33,7 +33,7 @@ const TransactionSchema = new mongoose.Schema(
     },
     paymentMethod: {
       type: String,
-      enum: ['cash', 'card', 'upi', 'bank-transfer', 'cheque'],
+      enum: ['cash', 'card', 'upi', 'bank-transfer', 'cheque', 'credit'],
       required: true,
     },
     paymentStatus: {
@@ -89,4 +89,9 @@ TransactionSchema.index({ date: 1 });
 TransactionSchema.index({ customer: 1 });
 TransactionSchema.index({ order: 1 });
 
-export default mongoose.models.Transaction || mongoose.model('Transaction', TransactionSchema);
+// Delete the model if it exists to force reload with new schema
+if (mongoose.models.Transaction) {
+  delete mongoose.models.Transaction;
+}
+
+export default mongoose.model('Transaction', TransactionSchema);
