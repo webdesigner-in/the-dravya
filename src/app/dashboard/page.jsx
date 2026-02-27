@@ -46,14 +46,24 @@ export default function DashboardPage() {
   }, []);
 
   const fetchDashboardData = async () => {
+    setIsLoading(true);
     try {
-      const response = await fetch("/api/dashboard");
+      const response = await fetch("/api/dashboard", {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
+      });
       if (response.ok) {
         const data = await response.json();
         setDashboardData(data.dashboard);
+      } else {
+        console.error("Failed to fetch dashboard data:", response.status);
+        setDashboardData(null);
       }
     } catch (error) {
       console.error("Error fetching dashboard data:", error);
+      setDashboardData(null);
     } finally {
       setIsLoading(false);
     }
@@ -69,8 +79,11 @@ export default function DashboardPage() {
 
   if (!dashboardData) {
     return (
-      <div className="flex justify-center items-center h-screen">
+      <div className="flex flex-col justify-center items-center h-screen gap-4">
         <p className="text-muted-foreground">Failed to load dashboard data</p>
+        <Button onClick={fetchDashboardData} variant="outline">
+          Retry
+        </Button>
       </div>
     );
   }
@@ -78,15 +91,15 @@ export default function DashboardPage() {
   const todayStats = [
     {
       title: "Today's Revenue",
-      value: `₹${dashboardData.today.revenue.toFixed(2)}`,
-      subtitle: `${dashboardData.today.orders} orders`,
+      value: `₹${(dashboardData?.today?.revenue || 0).toFixed(2)}`,
+      subtitle: `${dashboardData?.today?.orders || 0} orders`,
       icon: DollarSign,
       color: "text-green-600",
       bgColor: "bg-green-50",
     },
     {
       title: "Pending Orders",
-      value: dashboardData.summary.pendingOrders,
+      value: dashboardData?.summary?.pendingOrders || 0,
       subtitle: "Need attention",
       icon: Clock,
       color: "text-yellow-600",
@@ -94,7 +107,7 @@ export default function DashboardPage() {
     },
     {
       title: "Low Stock Items",
-      value: dashboardData.summary.lowStockProducts,
+      value: dashboardData?.summary?.lowStockProducts || 0,
       subtitle: "Need restock",
       icon: AlertTriangle,
       color: "text-red-600",
@@ -102,8 +115,8 @@ export default function DashboardPage() {
     },
     {
       title: "Overdue Payments",
-      value: dashboardData.overduePayments.count,
-      subtitle: `₹${dashboardData.overduePayments.amount.toFixed(2)} due`,
+      value: dashboardData?.overduePayments?.count || 0,
+      subtitle: `₹${(dashboardData?.overduePayments?.amount || 0).toFixed(2)} due`,
       icon: Bell,
       color: "text-orange-600",
       bgColor: "bg-orange-50",
@@ -181,26 +194,26 @@ export default function DashboardPage() {
                 <CardDescription className="mt-1">Orders waiting for processing</CardDescription>
               </div>
               <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200 shrink-0">
-                {dashboardData.pendingOrdersList.length} pending
+                {(dashboardData?.pendingOrdersList || []).length} pending
               </Badge>
             </div>
           </CardHeader>
           <CardContent>
-            {dashboardData.pendingOrdersList.length === 0 ? (
+            {(dashboardData?.pendingOrdersList || []).length === 0 ? (
               <div className="text-center py-6 text-muted-foreground">
                 <CheckCircle className="h-12 w-12 mx-auto mb-2 opacity-50" />
                 <p>All orders are processed!</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {dashboardData.pendingOrdersList.slice(0, 5).map((order) => (
+                {(dashboardData?.pendingOrdersList || []).slice(0, 5).map((order) => (
                   <Link
                     key={order._id}
                     href={`/dashboard/orders`}
                     className="flex items-center justify-between p-3 border rounded-lg hover:bg-yellow-50 transition-colors"
                   >
                     <div className="flex-1">
-                      <p className="font-medium text-sm">{order.customer.name}</p>
+                      <p className="font-medium text-sm">{order?.customer?.name || 'Unknown'}</p>
                       <p className="text-xs text-muted-foreground">
                         {order.orderNumber} • {new Date(order.createdAt).toLocaleDateString()}
                       </p>
@@ -237,19 +250,19 @@ export default function DashboardPage() {
                 <CardDescription>Products need immediate restocking</CardDescription>
               </div>
               <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-                {dashboardData.lowStockProducts.length} items
+                {(dashboardData?.lowStockProducts || []).length} items
               </Badge>
             </div>
           </CardHeader>
           <CardContent>
-            {dashboardData.lowStockProducts.length === 0 ? (
+            {(dashboardData?.lowStockProducts || []).length === 0 ? (
               <div className="text-center py-6 text-muted-foreground">
                 <Package className="h-12 w-12 mx-auto mb-2 opacity-50" />
                 <p>All products are well stocked!</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {dashboardData.lowStockProducts.map((product) => (
+                {(dashboardData?.lowStockProducts || []).map((product) => (
                   <Link
                     key={product._id}
                     href="/dashboard/products"
@@ -283,7 +296,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Overdue Payments */}
-      {dashboardData.overduePayments.list.length > 0 && (
+      {(dashboardData?.overduePayments?.list || []).length > 0 && (
         <Card className="border-orange-200">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -303,7 +316,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {dashboardData.overduePayments.list.slice(0, 5).map((payment) => (
+              {(dashboardData?.overduePayments?.list || []).slice(0, 5).map((payment) => (
                 <Link
                   key={payment.orderId}
                   href={`/dashboard/orders?customer=${payment.customerId}`}
@@ -325,7 +338,7 @@ export default function DashboardPage() {
                   </div>
                 </Link>
               ))}
-              {dashboardData.overduePayments.list.length > 5 && (
+              {(dashboardData?.overduePayments?.list || []).length > 5 && (
                 <Link href="/dashboard/reports">
                   <Button variant="outline" className="w-full">
                     View All Overdue Payments
@@ -354,14 +367,14 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {dashboardData.todayOrders.length === 0 ? (
+            {(dashboardData?.todayOrders || []).length === 0 ? (
               <div className="text-center py-6 text-muted-foreground">
                 <ShoppingCart className="h-12 w-12 mx-auto mb-2 opacity-50" />
                 <p>No orders today yet</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {dashboardData.todayOrders.map((order) => (
+                {(dashboardData?.todayOrders || []).map((order) => (
                   <div
                     key={order._id}
                     className="flex items-center justify-between p-3 border rounded-lg"
@@ -502,7 +515,7 @@ export default function DashboardPage() {
               </div>
             </div>
             
-            {dashboardData.todayOrders.length > 0 ? (
+            {(dashboardData?.todayOrders || []).length > 0 ? (
               <div className="space-y-2">
                 <h3 className="font-semibold">Today's Orders</h3>
                 <div className="border rounded-lg overflow-hidden">
@@ -516,7 +529,7 @@ export default function DashboardPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {dashboardData.todayOrders.map((order) => (
+                      {(dashboardData?.todayOrders || []).map((order) => (
                         <tr key={order._id} className="hover:bg-muted/50">
                           <td className="p-2 font-mono text-xs">{order.orderNumber}</td>
                           <td className="p-2">{order.customer.name}</td>
@@ -595,11 +608,11 @@ export default function DashboardPage() {
           <DialogHeader>
             <DialogTitle>Low Stock Alert</DialogTitle>
             <DialogDescription>
-              {dashboardData.lowStockProducts.length} products need restocking
+              {(dashboardData?.lowStockProducts || []).length} products need restocking
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            {dashboardData.lowStockProducts.length > 0 ? (
+            {(dashboardData?.lowStockProducts || []).length > 0 ? (
               <div className="border rounded-lg overflow-hidden">
                 <table className="w-full text-sm">
                   <thead className="bg-muted">
@@ -612,7 +625,7 @@ export default function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {dashboardData.lowStockProducts.map((product) => (
+                    {(dashboardData?.lowStockProducts || []).map((product) => (
                       <tr key={product._id} className="hover:bg-muted/50">
                         <td className="p-2">
                           <div>
@@ -658,7 +671,7 @@ export default function DashboardPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            {dashboardData.overduePayments.list.length > 0 ? (
+            {(dashboardData?.overduePayments?.list || []).length > 0 ? (
               <div className="border rounded-lg overflow-hidden">
                 <table className="w-full text-sm">
                   <thead className="bg-muted">
@@ -671,7 +684,7 @@ export default function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {dashboardData.overduePayments.list.map((payment) => (
+                    {(dashboardData?.overduePayments?.list || []).map((payment) => (
                       <tr key={payment.orderId} className="hover:bg-muted/50">
                         <td className="p-2">{payment.customerName}</td>
                         <td className="p-2 font-mono text-xs">{payment.orderNumber}</td>
@@ -702,3 +715,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+

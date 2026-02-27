@@ -135,6 +135,12 @@ export async function GET(request) {
         itemsPerPage: limit,
         hasMore: page < totalPages,
       },
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      },
     });
   } catch (error) {
     console.error('Get orders error:', error);

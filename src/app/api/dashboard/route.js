@@ -172,6 +172,12 @@ export async function GET(request) {
     return NextResponse.json({
       success: true,
       dashboard,
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      },
     });
   } catch (error) {
     console.error('Get dashboard error:', error);
