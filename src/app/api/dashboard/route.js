@@ -20,19 +20,13 @@ export async function GET(request) {
 
     await connectDB();
 
-    // Get dates
+    // Get dates - Use UTC to avoid timezone issues
     const now = new Date();
-    const startOfToday = new Date(now.setHours(0, 0, 0, 0));
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
     // Filter orders by the logged-in user (createdBy) - Admin sees all orders
     const orderFilter = authUser.role === 'admin' ? {} : { createdBy: authUser.userId };
-
-    console.log('Dashboard API - Auth User:', {
-      userId: authUser.userId,
-      role: authUser.role,
-      orderFilter: JSON.stringify(orderFilter)
-    });
 
     // Fetch data - orders filtered by user (or all for admin), customers shared
     const [allOrders, customers, products, invoices] = await Promise.all([
@@ -45,12 +39,6 @@ export async function GET(request) {
       Invoice.find({}).populate('order'),
     ]);
 
-    console.log('Dashboard API - Orders found:', {
-      totalOrders: allOrders.length,
-      orderNumbers: allOrders.slice(0, 5).map(o => o.orderNumber),
-      createdByUsers: [...new Set(allOrders.map(o => o.createdBy?._id?.toString() || 'unknown'))]
-    });
-
     // Filter invoices to only include those from user's orders (or all for admin)
     const userOrderIds = allOrders.map(order => order._id.toString());
     const userInvoices = invoices.filter(invoice => 
@@ -62,6 +50,28 @@ export async function GET(request) {
       (order) => new Date(order.createdAt) >= startOfToday
     );
     const todayRevenue = todayOrders.reduce((sum, order) => sum + (order.finalAmount || 0), 0);
+
+    // Debug logging
+    console.log('=== TODAY\'S ORDERS DEBUG ===');
+    console.log('Current time:', now);
+    console.log('Start of today:', startOfToday);
+    console.log('Total orders in DB:', allOrders.length);
+    console.log('Today\'s orders count:', todayOrders.length);
+    console.log('Today\'s orders:', todayOrders.map(o => ({
+      orderNumber: o.orderNumber,
+      createdAt: o.createdAt,
+      isToday: new Date(o.createdAt) >= startOfToday
+    })));
+    console.log('All orders created today or later:', allOrders.filter(o => {
+      const orderDate = new Date(o.createdAt);
+      return orderDate >= startOfToday;
+    }).map(o => ({
+      orderNumber: o.orderNumber,
+      createdAt: o.createdAt,
+      orderDate: new Date(o.createdAt),
+      comparison: `${new Date(o.createdAt)} >= ${startOfToday}`
+    })));
+    console.log('========================');
 
     // This month's orders
     const monthOrders = allOrders.filter(
@@ -149,7 +159,7 @@ export async function GET(request) {
         revenue: todayRevenue,
         orders: todayOrders.length,
       },
-      todayOrders: todayOrders.slice(0, 10).map((order) => ({
+      todayOrders: todayOrders.map((order) => ({
         _id: order._id,
         orderNumber: order.orderNumber,
         customer: {

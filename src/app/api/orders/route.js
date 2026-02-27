@@ -34,12 +34,6 @@ export async function GET(request) {
     // Filter by logged-in user (createdBy) - Admin sees all orders
     const filter = authUser.role === 'admin' ? {} : { createdBy: authUser.userId };
 
-    console.log('Orders API - Auth User:', {
-      userId: authUser.userId,
-      role: authUser.role,
-      baseFilter: JSON.stringify(filter)
-    });
-
     // Filter by customer
     if (customerId) {
       filter.customer = customerId;
