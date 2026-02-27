@@ -34,16 +34,6 @@ export async function GET(request) {
     // Filter by logged-in user (createdBy) - Admin sees all orders
     const filter = authUser.role === 'admin' ? {} : { createdBy: authUser.userId };
 
-    // Debug logging
-    console.log('=== ORDERS API DEBUG ===');
-    console.log('Auth User:', {
-      userId: authUser.userId,
-      role: authUser.role,
-      isAdmin: authUser.role === 'admin'
-    });
-    console.log('Base Filter:', JSON.stringify(filter));
-    console.log('========================');
-
     // Filter by customer
     if (customerId) {
       filter.customer = customerId;
@@ -110,21 +100,12 @@ export async function GET(request) {
       sortOrder = { deliveryDate: -1, createdAt: -1 }; // Sort by delivery date first, then creation date
     }
 
-    console.log('Final Filter before DB query:', JSON.stringify(filter));
-
     const orders = await Order.find(filter)
       .populate('customer', 'name phone email address')
       .populate('items.product', 'name sku size bottlesPerCarton')
       .populate('createdBy', 'name email')
       .populate('assignedTo', 'name email')
       .sort(sortOrder);
-
-    console.log('Orders found from DB:', orders.length);
-    console.log('First 5 orders:', orders.slice(0, 5).map(o => ({
-      orderNumber: o.orderNumber,
-      createdBy: o.createdBy?._id?.toString() || 'none',
-      createdByName: o.createdBy?.name || 'none'
-    })));
 
     // Search filter (applied after population)
     let filteredOrders = orders;
