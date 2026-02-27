@@ -4,6 +4,13 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { 
   Package, 
   ShoppingCart, 
@@ -17,6 +24,7 @@ import {
   ArrowRight,
   Bell,
   Calendar,
+  Eye,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import Link from "next/link";
@@ -26,6 +34,12 @@ export default function DashboardPage() {
   const isAdmin = useAuthStore((state) => state.isAdmin());
   const [dashboardData, setDashboardData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Dialog states
+  const [isRevenueDialogOpen, setIsRevenueDialogOpen] = useState(false);
+  const [isPendingDialogOpen, setIsPendingDialogOpen] = useState(false);
+  const [isLowStockDialogOpen, setIsLowStockDialogOpen] = useState(false);
+  const [isOverdueDialogOpen, setIsOverdueDialogOpen] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -118,7 +132,7 @@ export default function DashboardPage() {
 
       {/* Today's Stats */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {todayStats.map((stat) => (
+        {todayStats.map((stat, index) => (
           <Card key={stat.title} className="hover:shadow-md transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
               <CardTitle className="text-sm font-medium">{stat.title}</CardTitle>
@@ -129,6 +143,20 @@ export default function DashboardPage() {
             <CardContent>
               <div className="text-2xl font-bold">{stat.value}</div>
               <p className="text-xs text-muted-foreground mt-1">{stat.subtitle}</p>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-2 h-8 text-xs"
+                onClick={() => {
+                  if (index === 0) setIsRevenueDialogOpen(true);
+                  else if (index === 1) setIsPendingDialogOpen(true);
+                  else if (index === 2) setIsLowStockDialogOpen(true);
+                  else if (index === 3) setIsOverdueDialogOpen(true);
+                }}
+              >
+                <Eye className="h-3 w-3 mr-1" />
+                View Details
+              </Button>
             </CardContent>
           </Card>
         ))}
@@ -447,6 +475,225 @@ export default function DashboardPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Revenue Details Dialog */}
+      <Dialog open={isRevenueDialogOpen} onOpenChange={setIsRevenueDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Today's Revenue Breakdown</DialogTitle>
+            <DialogDescription>
+              Detailed breakdown of today's revenue from {dashboardData.today.orders} orders
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4 p-4 bg-green-50 rounded-lg">
+              <div>
+                <p className="text-sm text-muted-foreground">Total Revenue</p>
+                <p className="text-2xl font-bold text-green-600">₹{dashboardData.today.revenue.toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Orders</p>
+                <p className="text-2xl font-bold">{dashboardData.today.orders}</p>
+              </div>
+            </div>
+            
+            {dashboardData.todayOrders.length > 0 ? (
+              <div className="space-y-2">
+                <h3 className="font-semibold">Today's Orders</h3>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted">
+                      <tr>
+                        <th className="text-left p-2">Order #</th>
+                        <th className="text-left p-2">Customer</th>
+                        <th className="text-right p-2">Amount</th>
+                        <th className="text-center p-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {dashboardData.todayOrders.map((order) => (
+                        <tr key={order._id} className="hover:bg-muted/50">
+                          <td className="p-2 font-mono text-xs">{order.orderNumber}</td>
+                          <td className="p-2">{order.customer.name}</td>
+                          <td className="p-2 text-right font-semibold">₹{order.finalAmount.toFixed(2)}</td>
+                          <td className="p-2 text-center">
+                            <Badge variant="outline" className="text-xs capitalize">
+                              {order.status}
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <p className="text-center text-muted-foreground py-4">No orders today</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pending Orders Dialog */}
+      <Dialog open={isPendingDialogOpen} onOpenChange={setIsPendingDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Pending Orders</DialogTitle>
+            <DialogDescription>
+              {dashboardData.pendingOrdersList.length} orders waiting for processing
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {dashboardData.pendingOrdersList.length > 0 ? (
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted">
+                    <tr>
+                      <th className="text-left p-2">Order #</th>
+                      <th className="text-left p-2">Customer</th>
+                      <th className="text-right p-2">Amount</th>
+                      <th className="text-center p-2">Status</th>
+                      <th className="text-center p-2">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {dashboardData.pendingOrdersList.map((order) => (
+                      <tr key={order._id} className="hover:bg-muted/50">
+                        <td className="p-2 font-mono text-xs">{order.orderNumber}</td>
+                        <td className="p-2">{order.customer.name}</td>
+                        <td className="p-2 text-right font-semibold">₹{order.finalAmount.toFixed(2)}</td>
+                        <td className="p-2 text-center">
+                          <Badge variant="outline" className="text-xs bg-yellow-100 text-yellow-800">
+                            {order.status}
+                          </Badge>
+                        </td>
+                        <td className="p-2 text-center">
+                          <Link href="/dashboard/orders">
+                            <Button variant="ghost" size="sm">View</Button>
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-center text-muted-foreground py-4">No pending orders</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Low Stock Dialog */}
+      <Dialog open={isLowStockDialogOpen} onOpenChange={setIsLowStockDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Low Stock Alert</DialogTitle>
+            <DialogDescription>
+              {dashboardData.lowStockProducts.length} products need restocking
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {dashboardData.lowStockProducts.length > 0 ? (
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted">
+                    <tr>
+                      <th className="text-left p-2">Product</th>
+                      <th className="text-center p-2">Current Stock</th>
+                      <th className="text-center p-2">Min Level</th>
+                      <th className="text-center p-2">Status</th>
+                      <th className="text-center p-2">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {dashboardData.lowStockProducts.map((product) => (
+                      <tr key={product._id} className="hover:bg-muted/50">
+                        <td className="p-2">
+                          <div>
+                            <p className="font-medium">{product.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {product.size.value}{product.size.unit}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="p-2 text-center">
+                          <span className="font-semibold text-red-600">{product.stock}</span>
+                        </td>
+                        <td className="p-2 text-center">{product.minStockLevel}</td>
+                        <td className="p-2 text-center">
+                          <Badge variant="outline" className="text-xs bg-red-100 text-red-800">
+                            Low Stock
+                          </Badge>
+                        </td>
+                        <td className="p-2 text-center">
+                          <Link href="/dashboard/stock">
+                            <Button variant="ghost" size="sm">Restock</Button>
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-center text-muted-foreground py-4">All products are well stocked</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Overdue Payments Dialog */}
+      <Dialog open={isOverdueDialogOpen} onOpenChange={setIsOverdueDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Overdue Payments</DialogTitle>
+            <DialogDescription>
+              {dashboardData.overduePayments.count} customers with ₹{dashboardData.overduePayments.amount.toFixed(2)} overdue
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {dashboardData.overduePayments.list.length > 0 ? (
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted">
+                    <tr>
+                      <th className="text-left p-2">Customer</th>
+                      <th className="text-left p-2">Order #</th>
+                      <th className="text-right p-2">Due Amount</th>
+                      <th className="text-center p-2">Days Overdue</th>
+                      <th className="text-center p-2">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {dashboardData.overduePayments.list.map((payment) => (
+                      <tr key={payment.orderId} className="hover:bg-muted/50">
+                        <td className="p-2">{payment.customerName}</td>
+                        <td className="p-2 font-mono text-xs">{payment.orderNumber}</td>
+                        <td className="p-2 text-right font-semibold text-orange-600">
+                          ₹{payment.dueAmount.toFixed(2)}
+                        </td>
+                        <td className="p-2 text-center">
+                          <Badge variant="outline" className="text-xs bg-orange-100 text-orange-800">
+                            {Math.floor((new Date() - new Date(payment.dueDate)) / (1000 * 60 * 60 * 24))} days
+                          </Badge>
+                        </td>
+                        <td className="p-2 text-center">
+                          <Link href={`/dashboard/orders?customer=${payment.customerId}`}>
+                            <Button variant="ghost" size="sm">View Orders</Button>
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-center text-muted-foreground py-4">No overdue payments</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
