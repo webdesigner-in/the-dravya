@@ -4,6 +4,7 @@ import Order from '@/models/Order';
 import Invoice from '@/models/Invoice';
 import Transaction from '@/models/Transaction';
 import { getAuthUser } from '@/lib/auth';
+import { generateInvoiceNumber, generateTransactionNumber } from '@/lib/numberGenerator';
 
 // POST create invoice from order
 export async function POST(request, { params }) {
@@ -54,6 +55,10 @@ export async function POST(request, { params }) {
     // Calculate subtotal from invoice items (at original prices)
     const calculatedSubtotal = invoiceItems.reduce((sum, item) => sum + item.subtotal, 0);
 
+    // Calculate payment amounts (must be before using 'paid' variable)
+    const paid = parseFloat(paidAmount) || 0;
+    const balance = order.finalAmount - paid;
+
     // Calculate due date - only for unpaid/partial invoices
     let invoiceDueDate;
     if (paymentStatus === 'paid' || paid >= order.finalAmount) {
@@ -66,10 +71,6 @@ export async function POST(request, { params }) {
       // Default 7 days from now for unpaid/partial
       invoiceDueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     }
-
-    // Calculate payment amounts
-    const paid = parseFloat(paidAmount) || 0;
-    const balance = order.finalAmount - paid;
     
     // Determine invoice status based on payment
     let invoiceStatus = 'sent';
@@ -79,10 +80,8 @@ export async function POST(request, { params }) {
       invoiceStatus = 'partial';
     }
 
-    // Generate invoice number
-    const invoiceCount = await Invoice.countDocuments();
-    const year = new Date().getFullYear();
-    const invoiceNumber = `INV${year}${String(invoiceCount + 1).padStart(5, '0')}`;
+    // Generate unique invoice number using utility function
+    const invoiceNumber = await generateInvoiceNumber();
 
     // Prepare invoice data
     const invoiceData = {
@@ -115,8 +114,7 @@ export async function POST(request, { params }) {
 
     // Create transaction if payment is made
     if (paid > 0) {
-      const transactionCount = await Transaction.countDocuments();
-      const transactionNumber = `TXN${String(transactionCount + 1).padStart(6, '0')}`;
+      const transactionNumber = await generateTransactionNumber();
 
       await Transaction.create({
         transactionNumber,

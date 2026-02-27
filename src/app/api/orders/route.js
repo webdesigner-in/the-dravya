@@ -5,6 +5,7 @@ import Product from '@/models/Product';
 import Customer from '@/models/Customer';
 import Transaction from '@/models/Transaction';
 import { getAuthUser } from '@/lib/auth';
+import { generateOrderNumber } from '@/lib/numberGenerator';
 
 // GET all orders
 export async function GET(request) {
@@ -249,9 +250,8 @@ export async function POST(request) {
     const totalAmount = subtotalAtOriginalPrice;
     const finalAmount = subtotalAtCustomPrice + taxAmount;
 
-    // Generate order number
-    const orderCount = await Order.countDocuments();
-    const orderNumber = `ORD${String(orderCount + 1).padStart(6, '0')}`;
+    // Generate unique order number using utility function
+    const orderNumber = await generateOrderNumber();
 
     const order = await Order.create({
       orderNumber,

@@ -6,6 +6,7 @@ import Customer from '@/models/Customer';
 import Order from '@/models/Order';
 import User from '@/models/User';
 import { getAuthUser } from '@/lib/auth';
+import { generateRouteNumber } from '@/lib/numberGenerator';
 
 // GET all routes
 export async function GET(request) {
@@ -71,9 +72,8 @@ export async function POST(request) {
 
     await connectDB();
 
-    // Generate route number
-    const routeCount = await Route.countDocuments();
-    const routeNumber = `RT${String(routeCount + 1).padStart(6, '0')}`;
+    // Generate unique route number using utility function
+    const routeNumber = await generateRouteNumber();
 
     const route = await Route.create({
       ...body,

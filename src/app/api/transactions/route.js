@@ -5,6 +5,7 @@ import Customer from '@/models/Customer';
 import Order from '@/models/Order';
 import User from '@/models/User';
 import { getAuthUser } from '@/lib/auth';
+import { generateTransactionNumber } from '@/lib/numberGenerator';
 
 // GET all transactions
 export async function GET(request) {
@@ -151,9 +152,8 @@ export async function POST(request) {
 
     await connectDB();
 
-    // Generate transaction number
-    const transactionCount = await Transaction.countDocuments();
-    const transactionNumber = `TXN${String(transactionCount + 1).padStart(6, '0')}`;
+    // Generate unique transaction number using utility function
+    const transactionNumber = await generateTransactionNumber();
 
     // Prepare transaction data - convert empty strings to null for ObjectId fields
     const transactionData = {
