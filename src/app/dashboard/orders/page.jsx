@@ -115,22 +115,6 @@ export default function OrdersPage() {
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
   const [sortBy, setSortBy] = useState("date");
-  
-  // Get current month in YYYY-MM format
-  const getCurrentMonth = () => {
-    if (typeof window === 'undefined') return 'all'; // Return 'all' during SSR
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    return `${year}-${month}`;
-  };
-  
-  const [monthFilter, setMonthFilter] = useState('all');
-  
-  // Set current month after component mounts
-  useEffect(() => {
-    setMonthFilter(getCurrentMonth());
-  }, []);
 
   const [formData, setFormData] = useState({
     customer: customerIdFromUrl || "",
@@ -172,7 +156,7 @@ export default function OrdersPage() {
     fetchOrders();
     fetchCustomers();
     fetchProducts();
-  }, [statusFilter, paymentFilter, dateFilter, monthFilter, customerIdFromUrl, currentPage, searchQuery, sortBy]);
+  }, [statusFilter, paymentFilter, dateFilter, customerIdFromUrl, currentPage, searchQuery, sortBy]);
 
   const fetchOrders = async () => {
     try {
@@ -181,7 +165,6 @@ export default function OrdersPage() {
       if (statusFilter !== "all") url += `status=${statusFilter}&`;
       if (paymentFilter !== "all") url += `paymentStatus=${paymentFilter}&`;
       if (dateFilter !== "all") url += `date=${dateFilter}&`;
-      if (monthFilter && monthFilter !== "all") url += `month=${monthFilter}&`;
       if (customerIdFromUrl) url += `customer=${customerIdFromUrl}&`;
       if (searchQuery) url += `search=${searchQuery}&`;
       if (sortBy) url += `sortBy=${sortBy}&`;
@@ -280,7 +263,6 @@ export default function OrdersPage() {
     setStatusFilter("all");
     setPaymentFilter("all");
     setDateFilter("all");
-    setMonthFilter(getCurrentMonth());
     setSortBy("date");
     setCurrentPage(1);
     
@@ -749,17 +731,17 @@ export default function OrdersPage() {
                 Create Order
               </Button>
             </DialogTrigger>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
-            <DialogHeader>
-              <DialogTitle className="text-lg md:text-xl">Create New Order</DialogTitle>
-              <DialogDescription className="text-sm">
+          <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto w-[98vw] sm:w-[95vw] md:w-full p-4 sm:p-6">
+            <DialogHeader className="pb-4">
+              <DialogTitle className="text-base sm:text-lg md:text-xl">Create New Order</DialogTitle>
+              <DialogDescription className="text-xs sm:text-sm">
                 Add a new order for a customer
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="customer">Customer *</Label>
+                  <Label htmlFor="customer" className="text-sm">Customer *</Label>
                   <Select
                     value={formData.customer}
                     onValueChange={(value) =>
@@ -767,7 +749,7 @@ export default function OrdersPage() {
                     }
                     required
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-10 text-sm">
                       <SelectValue placeholder="Select customer" />
                     </SelectTrigger>
                     <SelectContent className="max-h-[300px]">
@@ -781,9 +763,9 @@ export default function OrdersPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <Label>Order Items *</Label>
-                    <Button type="button" size="sm" onClick={addItem}>
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+                    <Label className="text-sm">Order Items *</Label>
+                    <Button type="button" size="sm" onClick={addItem} className="w-full sm:w-auto">
                       <Plus className="h-4 w-4 mr-1" />
                       Add Item
                     </Button>
@@ -791,10 +773,10 @@ export default function OrdersPage() {
                   {formData.items.map((item, index) => {
                     const selectedProduct = products.find(p => p._id === item.product);
                     return (
-                      <div key={index} className="space-y-2 p-3 border rounded-lg">
-                        <div className="flex gap-2 items-end">
-                          <div className="flex-1">
-                            <Label className="text-xs">Product *</Label>
+                      <div key={index} className="space-y-3 p-3 sm:p-4 border rounded-lg bg-gray-50">
+                        <div className="space-y-3">
+                          <div className="space-y-2">
+                            <Label className="text-xs sm:text-sm">Product *</Label>
                             <Select
                               value={item.product}
                               onValueChange={(value) =>
@@ -802,7 +784,7 @@ export default function OrdersPage() {
                               }
                               required
                             >
-                              <SelectTrigger>
+                              <SelectTrigger className="h-10 text-sm">
                                 <SelectValue placeholder="Select product" />
                               </SelectTrigger>
                               <SelectContent className="max-h-[300px]">
@@ -815,46 +797,52 @@ export default function OrdersPage() {
                               </SelectContent>
                             </Select>
                           </div>
-                          <div className="w-24">
-                            <Label className="text-xs">Qty *</Label>
-                            <Input
-                              type="number"
-                              placeholder="Qty"
-                              value={item.quantity}
-                              onChange={(e) =>
-                                updateItem(index, "quantity", e.target.value === "" ? "" : parseInt(e.target.value) || 1)
-                              }
-                              min="1"
-                              required
-                            />
-                          </div>
-                          <div className="w-32">
-                            <Label className="text-xs">Custom Price (₹)</Label>
-                            <Input
-                              type="number"
-                              placeholder={selectedProduct ? `₹${selectedProduct.price}` : "Price"}
-                              value={item.customPrice}
-                              onChange={(e) =>
-                                updateItem(index, "customPrice", e.target.value)
-                              }
-                              min="0"
-                              step="0.01"
-                            />
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-2">
+                              <Label className="text-xs sm:text-sm">Quantity *</Label>
+                              <Input
+                                type="number"
+                                placeholder="Qty"
+                                value={item.quantity}
+                                onChange={(e) =>
+                                  updateItem(index, "quantity", e.target.value === "" ? "" : parseInt(e.target.value) || 1)
+                                }
+                                min="1"
+                                required
+                                className="h-10 text-sm"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label className="text-xs sm:text-sm">Custom Price (₹)</Label>
+                              <Input
+                                type="number"
+                                placeholder={selectedProduct ? `₹${selectedProduct.price}` : "Price"}
+                                value={item.customPrice}
+                                onChange={(e) =>
+                                  updateItem(index, "customPrice", e.target.value)
+                                }
+                                min="0"
+                                step="0.01"
+                                className="h-10 text-sm"
+                              />
+                            </div>
                           </div>
                           {formData.items.length > 1 && (
                             <Button
                               type="button"
                               variant="destructive"
-                              size="icon"
+                              size="sm"
                               onClick={() => removeItem(index)}
+                              className="w-full"
                             >
-                              <X className="h-4 w-4" />
+                              <X className="h-4 w-4 mr-1" />
+                              Remove Item
                             </Button>
                           )}
                         </div>
                         {selectedProduct && (
-                          <div className="text-xs text-muted-foreground flex justify-between">
-                            <span>Original Price: ₹{selectedProduct.price}</span>
+                          <div className="text-xs text-muted-foreground flex flex-col sm:flex-row sm:justify-between gap-1 pt-2 border-t">
+                            <span>Original: ₹{selectedProduct.price}</span>
                             {item.customPrice && item.customPrice !== "" && (
                               <span className="text-green-600">
                                 Discount: ₹{((selectedProduct.price - parseFloat(item.customPrice)) * (parseInt(item.quantity) || 0)).toFixed(2)}
@@ -867,24 +855,24 @@ export default function OrdersPage() {
                   })}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="discount" className="text-sm">Discount (₹) - Auto-calculated</Label>
+                    <Label htmlFor="discount" className="text-xs sm:text-sm">Discount (₹) - Auto-calculated</Label>
                     <Input
                       id="discount"
                       type="number"
                       value={formData.discount}
                       readOnly
-                      className="bg-gray-50"
+                      className="bg-gray-50 h-10 text-sm"
                       min="0"
                       step="0.01"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Discount is calculated from custom prices
+                      Auto-calculated from custom prices
                     </p>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="tax" className="text-sm">Tax (₹)</Label>
+                    <Label htmlFor="tax" className="text-xs sm:text-sm">Tax (₹)</Label>
                     <Input
                       id="tax"
                       type="number"
@@ -894,11 +882,12 @@ export default function OrdersPage() {
                       }
                       min="0"
                       step="0.01"
+                      className="h-10 text-sm"
                     />
                   </div>
                 </div>
 
-                <div className="p-4 bg-gray-50 rounded-lg space-y-2">
+                <div className="p-3 sm:p-4 bg-gray-50 rounded-lg space-y-2 text-sm">
                   {(() => {
                     let subtotalOriginal = 0;
                     let subtotalCustom = 0;
@@ -917,23 +906,23 @@ export default function OrdersPage() {
                     
                     return (
                       <>
-                        <div className="flex justify-between text-sm">
-                          <span>Subtotal (Original Prices):</span>
-                          <span>₹{subtotalOriginal.toFixed(2)}</span>
+                        <div className="flex justify-between text-xs sm:text-sm">
+                          <span>Subtotal (Original):</span>
+                          <span className="font-medium">₹{subtotalOriginal.toFixed(2)}</span>
                         </div>
                         {discount > 0 && (
-                          <div className="flex justify-between text-sm text-green-600">
+                          <div className="flex justify-between text-xs sm:text-sm text-green-600">
                             <span>Discount:</span>
-                            <span>-₹{discount.toFixed(2)}</span>
+                            <span className="font-medium">-₹{discount.toFixed(2)}</span>
                           </div>
                         )}
                         {tax > 0 && (
-                          <div className="flex justify-between text-sm">
+                          <div className="flex justify-between text-xs sm:text-sm">
                             <span>Tax:</span>
-                            <span>+₹{tax.toFixed(2)}</span>
+                            <span className="font-medium">+₹{tax.toFixed(2)}</span>
                           </div>
                         )}
-                        <div className="flex justify-between text-lg font-bold border-t pt-2">
+                        <div className="flex justify-between text-sm sm:text-base font-bold border-t pt-2 mt-2">
                           <span>Final Amount:</span>
                           <span>₹{calculateTotal().toFixed(2)}</span>
                         </div>
@@ -942,16 +931,16 @@ export default function OrdersPage() {
                   })()}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="status" className="text-sm">Order Status</Label>
+                    <Label htmlFor="status" className="text-xs sm:text-sm">Order Status</Label>
                     <Select
                       value={formData.status}
                       onValueChange={(value) =>
                         setFormData({ ...formData, status: value })
                       }
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="h-10 text-sm">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -965,7 +954,7 @@ export default function OrdersPage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="paymentStatus" className="text-sm">Payment Status</Label>
+                    <Label htmlFor="paymentStatus" className="text-xs sm:text-sm">Payment Status</Label>
                     <Select
                       value={formData.paymentStatus}
                       onValueChange={(value) => {
@@ -976,7 +965,7 @@ export default function OrdersPage() {
                         });
                       }}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="h-10 text-sm">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -990,7 +979,7 @@ export default function OrdersPage() {
 
                 {(formData.paymentStatus === "partial" || formData.paymentStatus === "paid") && (
                   <div className="space-y-2">
-                    <Label htmlFor="paidAmount" className="text-sm">Paid Amount (₹)</Label>
+                    <Label htmlFor="paidAmount" className="text-xs sm:text-sm">Paid Amount (₹)</Label>
                     <Input
                       id="paidAmount"
                       type="number"
@@ -1002,23 +991,24 @@ export default function OrdersPage() {
                       max={calculateTotal()}
                       step="0.01"
                       required
+                      className="h-10 text-sm"
                     />
-                    <p className="text-xs sm:text-sm text-muted-foreground">
-                      Total Amount: ₹{calculateTotal().toFixed(2)} | Due: ₹{(calculateTotal() - parseFloat(formData.paidAmount || 0)).toFixed(2)}
+                    <p className="text-xs text-muted-foreground">
+                      Total: ₹{calculateTotal().toFixed(2)} | Due: ₹{(calculateTotal() - parseFloat(formData.paidAmount || 0)).toFixed(2)}
                     </p>
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="paymentMethod" className="text-sm">Payment Method</Label>
+                    <Label htmlFor="paymentMethod" className="text-xs sm:text-sm">Payment Method</Label>
                     <Select
                       value={formData.paymentMethod}
                       onValueChange={(value) =>
                         setFormData({ ...formData, paymentMethod: value })
                       }
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="h-10 text-sm">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -1031,7 +1021,7 @@ export default function OrdersPage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="deliveryDate" className="text-sm">Delivery Date</Label>
+                    <Label htmlFor="deliveryDate" className="text-xs sm:text-sm">Delivery Date</Label>
                     <Input
                       id="deliveryDate"
                       type="date"
@@ -1039,12 +1029,13 @@ export default function OrdersPage() {
                       onChange={(e) =>
                         setFormData({ ...formData, deliveryDate: e.target.value })
                       }
+                      className="h-10 text-sm"
                     />
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="notes" className="text-sm">Notes</Label>
+                  <Label htmlFor="notes" className="text-xs sm:text-sm">Notes</Label>
                   <Textarea
                     id="notes"
                     value={formData.notes}
@@ -1053,10 +1044,11 @@ export default function OrdersPage() {
                     }
                     placeholder="Additional notes"
                     rows={2}
+                    className="text-sm resize-none"
                   />
                 </div>
               </div>
-              <DialogFooter className="mt-6 flex-col sm:flex-row gap-2">
+              <DialogFooter className="mt-6 flex-col-reverse sm:flex-row gap-2 pt-4 border-t">
                 <Button
                   type="button"
                   variant="outline"
@@ -1156,28 +1148,6 @@ export default function OrdersPage() {
                 <SelectItem value="today">Today</SelectItem>
                 <SelectItem value="week">This Week</SelectItem>
                 <SelectItem value="month">This Month</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={monthFilter} onValueChange={setMonthFilter}>
-              <SelectTrigger className="h-10">
-                <SelectValue placeholder="Month" />
-              </SelectTrigger>
-              <SelectContent align="start" side="bottom" sideOffset={5} avoidCollisions={false}>
-                <SelectItem value="all">All Months</SelectItem>
-                {isMounted && (() => {
-                  const months = [];
-                  const now = new Date();
-                  // Generate last 12 months
-                  for (let i = 0; i < 12; i++) {
-                    const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                    const year = date.getFullYear();
-                    const month = String(date.getMonth() + 1).padStart(2, '0');
-                    const value = `${year}-${month}`;
-                    const label = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-                    months.push(<SelectItem key={value} value={value}>{label}</SelectItem>);
-                  }
-                  return months;
-                })()}
               </SelectContent>
             </Select>
           </div>
