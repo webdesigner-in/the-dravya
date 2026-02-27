@@ -28,6 +28,12 @@ export async function GET(request) {
     // Filter orders by the logged-in user (createdBy) - Admin sees all orders
     const orderFilter = authUser.role === 'admin' ? {} : { createdBy: authUser.userId };
 
+    console.log('Dashboard API - Auth User:', {
+      userId: authUser.userId,
+      role: authUser.role,
+      orderFilter: JSON.stringify(orderFilter)
+    });
+
     // Fetch data - orders filtered by user (or all for admin), customers shared
     const [allOrders, customers, products, invoices] = await Promise.all([
       Order.find(orderFilter)
@@ -38,6 +44,12 @@ export async function GET(request) {
       Product.find({}),
       Invoice.find({}).populate('order'),
     ]);
+
+    console.log('Dashboard API - Orders found:', {
+      totalOrders: allOrders.length,
+      orderNumbers: allOrders.slice(0, 5).map(o => o.orderNumber),
+      createdByUsers: [...new Set(allOrders.map(o => o.createdBy?._id?.toString() || 'unknown'))]
+    });
 
     // Filter invoices to only include those from user's orders (or all for admin)
     const userOrderIds = allOrders.map(order => order._id.toString());

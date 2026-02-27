@@ -54,6 +54,7 @@ import {
 import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
 import { PaginationControls } from "@/components/ui/pagination-controls";
+import { Badge } from "@/components/ui/badge";
 
 export default function OrdersPage() {
   const searchParams = useSearchParams();
@@ -727,8 +728,13 @@ export default function OrdersPage() {
     <div className="space-y-4 md:space-y-6 p-4 md:p-0">
       <PageHeader
         title={customerIdFromUrl && selectedCustomerName ? `Orders - ${selectedCustomerName}` : "Orders"}
-        description={customerIdFromUrl ? `Viewing orders for ${selectedCustomerName || "customer"}` : "Manage and track all orders"}
+        description={customerIdFromUrl ? `Viewing orders for ${selectedCustomerName || "customer"}` : (isAdmin ? "Viewing all orders from all users" : "Manage and track your orders")}
         backHref={customerIdFromUrl ? "/dashboard/customers" : "/dashboard"}
+        badge={
+          <Badge variant={isAdmin ? "default" : "secondary"} className="text-xs">
+            {isAdmin ? "All Users" : "Personal"}
+          </Badge>
+        }
         actions={
           <Dialog
             open={isDialogOpen}

@@ -115,9 +115,14 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+            <Badge variant={isAdmin ? "default" : "secondary"} className="text-xs">
+              {isAdmin ? "Admin View - All Data" : "Personal View"}
+            </Badge>
+          </div>
           <p className="text-muted-foreground mt-2">
-            Welcome back, {user?.name || "User"}! Here's what needs your attention.
+            Welcome back, {user?.name || "User"}! {isAdmin ? "You're viewing data from all users." : "Here's your personal data."}
           </p>
         </div>
         {isAdmin && (

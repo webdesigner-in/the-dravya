@@ -73,6 +73,7 @@ const adminOnlyItems = [
   { title: "Transactions", url: "/dashboard/transactions", icon: DollarSign },
   { title: "Analytics", url: "/dashboard/analytics", icon: BarChart3 },
   { title: "User Management", url: "/dashboard/users", icon: Users },
+  { title: "Debug Info", url: "/dashboard/debug", icon: Settings },
 ];
 
 export function AppSidebar() {

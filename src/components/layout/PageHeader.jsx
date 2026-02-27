@@ -1,6 +1,7 @@
 "use client";
 
 import BackButton from "./BackButton";
+import { Badge } from "@/components/ui/badge";
 
 export default function PageHeader({ 
   title, 
@@ -9,6 +10,7 @@ export default function PageHeader({
   backHref,
   backLabel = "Back",
   actions,
+  badge,
   className = ""
 }) {
   return (
@@ -18,7 +20,10 @@ export default function PageHeader({
       )}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{title}</h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{title}</h1>
+            {badge && badge}
+          </div>
           {description && (
             <p className="text-sm md:text-base text-muted-foreground mt-2">
               {description}
