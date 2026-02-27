@@ -1,0 +1,95 @@
+import { NextResponse } from 'next/server';
+import connectDB from '@/lib/mongodb';
+import Vehicle from '@/models/Vehicle';
+import User from '@/models/User';
+import { getAuthUser } from '@/lib/auth';
+
+// GET all vehicles
+export async function GET(request) {
+  try {
+    const authUser = await getAuthUser();
+
+    if (!authUser) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    await connectDB();
+
+    const { searchParams } = new URL(request.url);
+    const status = searchParams.get('status');
+
+    const filter = {};
+    if (status) filter.status = status;
+
+    const vehicles = await Vehicle.find(filter)
+      .populate('driver', 'name phone email')
+      .sort({ createdAt: -1 });
+
+    return NextResponse.json({
+      success: true,
+      vehicles,
+    });
+  } catch (error) {
+    console.error('Get vehicles error:', error);
+    return NextResponse.json(
+      { error: 'Something went wrong' },
+      { status: 500 }
+    );
+  }
+}
+
+// POST create vehicle
+export async function POST(request) {
+  try {
+    const authUser = await getAuthUser();
+
+    if (!authUser || authUser.role !== 'admin') {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
+    const body = await request.json();
+
+    await connectDB();
+
+    // Check if vehicle number already exists
+    const existingVehicle = await Vehicle.findOne({
+      vehicleNumber: body.vehicleNumber.toUpperCase(),
+    });
+    if (existingVehicle) {
+      return NextResponse.json(
+        { error: 'Vehicle number already exists' },
+        { status: 400 }
+      );
+    }
+
+    const vehicle = await Vehicle.create({
+      ...body,
+      vehicleNumber: body.vehicleNumber.toUpperCase(),
+    });
+
+    const populatedVehicle = await Vehicle.findById(vehicle._id).populate(
+      'driver',
+      'name phone email'
+    );
+
+    return NextResponse.json(
+      {
+        success: true,
+        vehicle: populatedVehicle,
+      },
+      { status: 201 }
+    );
+  } catch (error) {
+    console.error('Create vehicle error:', error);
+    return NextResponse.json(
+      { error: 'Something went wrong' },
+      { status: 500 }
+    );
+  }
+}
