@@ -181,8 +181,8 @@ export default function OrdersPage() {
           setPagination(data.pagination);
         }
         
-        // Fetch all invoices at once
-        const invoicesRes = await fetch('/api/invoices');
+        // Fetch all invoices at once (without pagination limit)
+        const invoicesRes = await fetch('/api/invoices?limit=10000');
         let invoicesMap = {};
         
         if (invoicesRes.ok) {
@@ -190,9 +190,14 @@ export default function OrdersPage() {
           const allInvoices = invoicesData.invoices || [];
           
           // Create a map of order ID to invoice
+          // Handle both populated (object) and non-populated (string) order references
           allInvoices.forEach(invoice => {
-            if (invoice.order?._id) {
-              invoicesMap[invoice.order._id] = invoice;
+            const orderId = typeof invoice.order === 'object' 
+              ? invoice.order?._id 
+              : invoice.order;
+            
+            if (orderId) {
+              invoicesMap[orderId] = invoice;
             }
           });
         }
