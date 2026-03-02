@@ -118,7 +118,13 @@ export default function OrdersPage() {
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
 
   const [formData, setFormData] = useState({
+    orderType: "customer", // 'customer' or 'guest'
     customer: customerIdFromUrl || "",
+    guestInfo: {
+      name: "",
+      phone: "",
+      address: "",
+    },
     items: [{ product: "", quantity: 1, customPrice: "" }],
     discount: "0",
     tax: "0",
@@ -181,37 +187,8 @@ export default function OrdersPage() {
           setPagination(data.pagination);
         }
         
-        // Fetch all invoices at once (without pagination limit)
-        const invoicesRes = await fetch('/api/invoices?limit=10000');
-        let invoicesMap = {};
-        
-        if (invoicesRes.ok) {
-          const invoicesData = await invoicesRes.json();
-          const allInvoices = invoicesData.invoices || [];
-          
-          // Create a map of order ID to invoice
-          // Handle both populated (object) and non-populated (string) order references
-          allInvoices.forEach(invoice => {
-            const orderId = typeof invoice.order === 'object' 
-              ? invoice.order?._id 
-              : invoice.order;
-            
-            if (orderId) {
-              invoicesMap[orderId] = invoice;
-            }
-          });
-        }
-        
-        // Attach invoice to each order
-        const ordersWithInvoices = ordersData.map(order => {
-          const invoice = invoicesMap[order._id] || null;
-          return {
-            ...order,
-            invoice
-          };
-        });
-        
-        setOrders(ordersWithInvoices);
+        // Orders now come with invoice populated from the API
+        setOrders(ordersData);
       }
     } catch (error) {
       toast.error("Failed to fetch orders");
@@ -432,7 +409,13 @@ export default function OrdersPage() {
 
   const resetForm = () => {
     setFormData({
+      orderType: "customer",
       customer: customerIdFromUrl || "",
+      guestInfo: {
+        name: "",
+        phone: "",
+        address: "",
+      },
       items: [{ product: "", quantity: 1, customPrice: "" }],
       discount: "0",
       tax: "0",
@@ -744,59 +727,145 @@ export default function OrdersPage() {
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-4">
+                {/* Order Type Selection */}
                 <div className="space-y-2">
-                  <Label htmlFor="customer" className="text-sm">Customer *</Label>
-                  <Select
-                    value={formData.customer}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, customer: value })
-                    }
-                    required
-                  >
-                    <SelectTrigger className="h-10 text-sm">
-                      <SelectValue placeholder="Select customer" />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[300px]">
-                      <div className="sticky top-0 bg-white p-2 border-b z-10">
-                        <div className="relative">
-                          <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                          <Input
-                            placeholder="Search customers..."
-                            value={customerSearchQuery}
-                            onChange={(e) => setCustomerSearchQuery(e.target.value)}
-                            className="pl-8 h-9 text-sm"
-                            onClick={(e) => e.stopPropagation()}
-                            onKeyDown={(e) => e.stopPropagation()}
-                          />
+                  <Label className="text-sm">Order Type *</Label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="orderType"
+                        value="customer"
+                        checked={formData.orderType === "customer"}
+                        onChange={(e) => setFormData({ ...formData, orderType: e.target.value })}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm">Regular Customer</span>
+                    </label>
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="orderType"
+                        value="guest"
+                        checked={formData.orderType === "guest"}
+                        onChange={(e) => setFormData({ ...formData, orderType: e.target.value })}
+                        className="w-4 h-4"
+                      />
+                      <span className="text-sm">Guest / Walk-in</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Customer Selection (for regular orders) */}
+                {formData.orderType === "customer" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="customer" className="text-sm">Customer *</Label>
+                    <Select
+                      value={formData.customer}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, customer: value })
+                      }
+                      required
+                    >
+                      <SelectTrigger className="h-10 text-sm">
+                        <SelectValue placeholder="Select customer" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[300px]">
+                        <div className="sticky top-0 bg-white p-2 border-b z-10">
+                          <div className="relative">
+                            <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                            <Input
+                              placeholder="Search customers..."
+                              value={customerSearchQuery}
+                              onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                              className="pl-8 h-9 text-sm"
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => e.stopPropagation()}
+                            />
+                          </div>
                         </div>
-                      </div>
-                      {customers
-                        .filter((customer) => {
+                        {customers
+                          .filter((customer) => {
+                            const searchLower = customerSearchQuery.toLowerCase();
+                            return (
+                              customer.name.toLowerCase().includes(searchLower) ||
+                              customer.phone.includes(customerSearchQuery)
+                            );
+                          })
+                          .map((customer) => (
+                            <SelectItem key={customer._id} value={customer._id}>
+                              {customer.name} - {customer.phone}
+                            </SelectItem>
+                          ))}
+                        {customers.filter((customer) => {
                           const searchLower = customerSearchQuery.toLowerCase();
                           return (
                             customer.name.toLowerCase().includes(searchLower) ||
                             customer.phone.includes(customerSearchQuery)
                           );
-                        })
-                        .map((customer) => (
-                          <SelectItem key={customer._id} value={customer._id}>
-                            {customer.name} - {customer.phone}
-                          </SelectItem>
-                        ))}
-                      {customers.filter((customer) => {
-                        const searchLower = customerSearchQuery.toLowerCase();
-                        return (
-                          customer.name.toLowerCase().includes(searchLower) ||
-                          customer.phone.includes(customerSearchQuery)
-                        );
-                      }).length === 0 && (
-                        <div className="p-4 text-center text-sm text-gray-500">
-                          No customers found
-                        </div>
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
+                        }).length === 0 && (
+                          <div className="p-4 text-center text-sm text-gray-500">
+                            No customers found
+                          </div>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {/* Guest Info (for guest orders) */}
+                {formData.orderType === "guest" && (
+                  <div className="space-y-3 p-4 border rounded-lg bg-blue-50">
+                    <div className="space-y-2">
+                      <Label htmlFor="guestName" className="text-sm">Guest Name *</Label>
+                      <Input
+                        id="guestName"
+                        type="text"
+                        placeholder="Enter customer name"
+                        value={formData.guestInfo.name}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            guestInfo: { ...formData.guestInfo, name: e.target.value },
+                          })
+                        }
+                        required
+                        className="h-10 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="guestPhone" className="text-sm">Phone (Optional)</Label>
+                      <Input
+                        id="guestPhone"
+                        type="tel"
+                        placeholder="Enter phone number"
+                        value={formData.guestInfo.phone}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            guestInfo: { ...formData.guestInfo, phone: e.target.value },
+                          })
+                        }
+                        className="h-10 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="guestAddress" className="text-sm">Address (Optional)</Label>
+                      <Textarea
+                        id="guestAddress"
+                        placeholder="Enter delivery address"
+                        value={formData.guestInfo.address}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            guestInfo: { ...formData.guestInfo, address: e.target.value },
+                          })
+                        }
+                        className="text-sm min-h-[60px]"
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
@@ -1219,6 +1288,11 @@ export default function OrdersPage() {
                         <h3 className="text-base md:text-lg font-semibold">
                           {order.orderNumber}
                         </h3>
+                        {(order.orderType === "guest") && (
+                          <span className="text-xs px-2 py-1 rounded bg-purple-100 text-purple-700">
+                            Guest
+                          </span>
+                        )}
                         <span
                           className={`text-xs px-2 py-1 rounded capitalize ${getStatusColor(
                             order.status
@@ -1244,8 +1318,17 @@ export default function OrdersPage() {
                       {/* Order Details */}
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs sm:text-sm">
                         <div>
-                          <span className="text-muted-foreground block">Customer:</span>
-                          <p className="font-medium truncate">{order.customer?.name}</p>
+                          <span className="text-muted-foreground block">
+                            {(order.orderType === "guest") ? "Guest:" : "Customer:"}
+                          </span>
+                          <p className="font-medium truncate">
+                            {(order.orderType === "guest") 
+                              ? order.guestInfo?.name || "Guest Customer"
+                              : order.customer?.name}
+                          </p>
+                          {(order.orderType === "guest") && order.guestInfo?.phone && (
+                            <p className="text-xs text-muted-foreground">{order.guestInfo.phone}</p>
+                          )}
                         </div>
                         <div>
                           <span className="text-muted-foreground block">Total:</span>
@@ -1700,12 +1783,29 @@ export default function OrdersPage() {
           
           {selectedOrder && (
             <div className="space-y-4">
-              {/* Customer Info */}
+              {/* Customer/Guest Info */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
                 <div>
-                  <p className="text-sm text-muted-foreground">Customer</p>
-                  <p className="font-medium">{selectedOrder.customer?.name}</p>
-                  <p className="text-sm text-muted-foreground">{selectedOrder.customer?.phone}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {(selectedOrder.orderType === "guest") ? "Guest Customer" : "Customer"}
+                  </p>
+                  {(selectedOrder.orderType === "guest") ? (
+                    <>
+                      <p className="font-medium">{selectedOrder.guestInfo?.name || "Guest"}</p>
+                      {selectedOrder.guestInfo?.phone && (
+                        <p className="text-sm text-muted-foreground">{selectedOrder.guestInfo.phone}</p>
+                      )}
+                      {selectedOrder.guestInfo?.address && (
+                        <p className="text-xs text-muted-foreground mt-1">{selectedOrder.guestInfo.address}</p>
+                      )}
+                      <Badge variant="secondary" className="mt-2 text-xs">Walk-in Order</Badge>
+                    </>
+                  ) : (
+                    <>
+                      <p className="font-medium">{selectedOrder.customer?.name}</p>
+                      <p className="text-sm text-muted-foreground">{selectedOrder.customer?.phone}</p>
+                    </>
+                  )}
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Status</p>

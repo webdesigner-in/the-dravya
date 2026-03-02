@@ -29,10 +29,30 @@ const OrderSchema = new mongoose.Schema(
       unique: true,
       required: true,
     },
+    orderType: {
+      type: String,
+      enum: ['customer', 'guest'],
+      default: 'customer',
+      required: true,
+    },
     customer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Customer',
-      required: true,
+      required: false, // Not required for guest orders
+    },
+    guestInfo: {
+      name: {
+        type: String,
+        required: false,
+      },
+      phone: {
+        type: String,
+        required: false,
+      },
+      address: {
+        type: String,
+        required: false,
+      },
     },
     items: [OrderItemSchema],
     totalAmount: {
@@ -103,6 +123,10 @@ const OrderSchema = new mongoose.Schema(
     notes: {
       type: String,
     },
+    invoice: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Invoice',
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -116,9 +140,15 @@ const OrderSchema = new mongoose.Schema(
 
 // Indexes (removed duplicate)
 OrderSchema.index({ customer: 1 });
+OrderSchema.index({ orderType: 1 });
 OrderSchema.index({ status: 1 });
 OrderSchema.index({ paymentStatus: 1 });
 OrderSchema.index({ deliveryDate: 1 });
 OrderSchema.index({ assignedTo: 1 });
 
-export default mongoose.models.Order || mongoose.model('Order', OrderSchema);
+// Delete the model if it exists to force reload with new schema
+if (mongoose.models.Order) {
+  delete mongoose.models.Order;
+}
+
+export default mongoose.model('Order', OrderSchema);

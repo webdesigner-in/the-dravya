@@ -4,6 +4,7 @@ import Order from '@/models/Order';
 import Product from '@/models/Product';
 import Customer from '@/models/Customer';
 import Transaction from '@/models/Transaction';
+import Invoice from '@/models/Invoice';
 import { getAuthUser } from '@/lib/auth';
 import { generateOrderNumber } from '@/lib/numberGenerator';
 
@@ -106,6 +107,7 @@ export async function GET(request) {
       .populate('items.product', 'name sku size bottlesPerCarton')
       .populate('createdBy', 'name email')
       .populate('assignedTo', 'name email')
+      .populate('invoice', 'invoiceNumber status')
       .sort(sortOrder);
 
     // Search filter (applied after population)
@@ -116,7 +118,9 @@ export async function GET(request) {
         (order) =>
           order.orderNumber.toLowerCase().includes(searchLower) ||
           order.customer?.name.toLowerCase().includes(searchLower) ||
-          order.customer?.phone.includes(search)
+          order.customer?.phone.includes(search) ||
+          order.guestInfo?.name?.toLowerCase().includes(searchLower) ||
+          order.guestInfo?.phone?.includes(search)
       );
     }
 
@@ -166,7 +170,9 @@ export async function POST(request) {
 
     const body = await request.json();
     const {
+      orderType,
       customer,
+      guestInfo,
       items,
       discount,
       tax,
@@ -179,22 +185,43 @@ export async function POST(request) {
       notes,
     } = body;
 
-    if (!customer || !items || items.length === 0) {
+    if (!items || items.length === 0) {
       return NextResponse.json(
-        { error: 'Please provide customer and order items' },
+        { error: 'Please provide order items' },
+        { status: 400 }
+      );
+    }
+
+    // Validate order type
+    const isGuestOrder = orderType === 'guest';
+    
+    if (!isGuestOrder && !customer) {
+      return NextResponse.json(
+        { error: 'Please provide customer for regular orders' },
+        { status: 400 }
+      );
+    }
+
+    if (isGuestOrder && (!guestInfo || !guestInfo.name)) {
+      return NextResponse.json(
+        { error: 'Please provide guest name for guest orders' },
         { status: 400 }
       );
     }
 
     await connectDB();
 
-    // Validate customer exists
-    const customerDoc = await Customer.findById(customer);
-    if (!customerDoc) {
-      return NextResponse.json(
-        { error: 'Customer not found' },
-        { status: 404 }
-      );
+    let customerDoc = null;
+    
+    // Validate customer exists for regular orders
+    if (!isGuestOrder) {
+      customerDoc = await Customer.findById(customer);
+      if (!customerDoc) {
+        return NextResponse.json(
+          { error: 'Customer not found' },
+          { status: 404 }
+        );
+      }
     }
 
     // Validate products and calculate totals
@@ -251,11 +278,12 @@ export async function POST(request) {
     const finalAmount = subtotalAtCustomPrice + taxAmount;
 
     // Generate unique order number using utility function
-    const orderNumber = await generateOrderNumber();
+    const orderNumber = generateOrderNumber();
 
-    const order = await Order.create({
+    // Prepare order data
+    const orderData = {
       orderNumber,
-      customer,
+      orderType: isGuestOrder ? 'guest' : 'customer',
       items: validatedItems,
       totalAmount,
       discount: discountAmount,
@@ -265,12 +293,26 @@ export async function POST(request) {
       paymentStatus: paymentStatus || 'unpaid',
       paidAmount: parseFloat(paidAmount) || 0,
       paymentMethod: paymentMethod || 'cash',
-      deliveryAddress: deliveryAddress || customerDoc.address,
       deliveryDate,
       notes,
       createdBy: authUser.userId,
       assignedTo: authUser.userId,
-    });
+    };
+
+    // Add customer or guest info
+    if (isGuestOrder) {
+      orderData.guestInfo = {
+        name: guestInfo.name,
+        phone: guestInfo.phone || '',
+        address: guestInfo.address || '',
+      };
+      orderData.deliveryAddress = guestInfo.address || deliveryAddress;
+    } else {
+      orderData.customer = customer;
+      orderData.deliveryAddress = deliveryAddress || customerDoc.address;
+    }
+
+    const order = await Order.create(orderData);
 
     const populatedOrder = await Order.findById(order._id)
       .populate('customer', 'name phone email address')

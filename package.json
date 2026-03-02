@@ -2,11 +2,16 @@
   "name": "dravya-management",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed:expenses": "node scripts/seedExpenses.js",
+    "verify:expenses": "node scripts/verifyExpenses.js",
+    "link:invoices": "node scripts/linkInvoicesToOrders.js",
+    "migrate:uuid": "node scripts/migrateToUUID.js"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.15",

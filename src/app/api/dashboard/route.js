@@ -29,108 +29,133 @@ export async function GET(request) {
     // Filter orders by the logged-in user (createdBy) - Admin sees all orders
     const orderFilter = authUser.role === 'admin' ? {} : { createdBy: authUser.userId };
 
-    // Fetch data - orders filtered by user (or all for admin), customers shared
-    const [allOrders, customers, products, invoices] = await Promise.all([
-      Order.find(orderFilter)
-        .populate('customer', 'name phone')
-        .populate('createdBy', 'name email')
-        .sort({ createdAt: -1 }),
-      Customer.find({}), // Customers are shared
-      Product.find({}),
-      Invoice.find({}).populate('order'),
+    // Fetch only necessary data with limits and specific fields
+    const [
+      todayOrders,
+      pendingOrdersList,
+      recentDeliveries,
+      customers,
+      lowStockProducts,
+      overdueInvoices
+    ] = await Promise.all([
+      // Today's orders - limited to 50
+      Order.find({
+        ...orderFilter,
+        createdAt: { $gte: startOfToday }
+      })
+        .select('orderNumber customer finalAmount status createdAt')
+        .populate('customer', 'name')
+        .limit(50)
+        .lean(),
+      
+      // Pending orders - limited to 20
+      Order.find({
+        ...orderFilter,
+        status: { $in: ['pending', 'confirmed', 'processing'] }
+      })
+        .select('orderNumber customer finalAmount status createdAt')
+        .populate('customer', 'name')
+        .limit(20)
+        .sort({ createdAt: -1 })
+        .lean(),
+      
+      // Recent deliveries - limited to 10
+      Order.find({
+        ...orderFilter,
+        status: 'delivered'
+      })
+        .select('orderNumber customer finalAmount updatedAt')
+        .populate('customer', 'name')
+        .limit(10)
+        .sort({ updatedAt: -1 })
+        .lean(),
+      
+      // Customer count only
+      Customer.countDocuments({}),
+      
+      // Low stock products - limited to 10
+      Product.find({
+        $expr: { $lte: ['$stock', '$minStockLevel'] },
+        stock: { $gt: 0 }
+      })
+        .select('name size stock minStockLevel')
+        .limit(10)
+        .sort({ stock: 1 })
+        .lean(),
+      
+      // Overdue invoices - limited to 20
+      Invoice.find({
+        status: { $in: ['sent', 'partial'] },
+        dueDate: { $lt: new Date() },
+        balanceAmount: { $gt: 0 }
+      })
+        .select('order balanceAmount dueDate')
+        .populate({
+          path: 'order',
+          select: 'orderNumber customer createdBy',
+          populate: { path: 'customer', select: 'name' }
+        })
+        .limit(20)
+        .lean()
     ]);
 
-    // Filter invoices to only include those from user's orders (or all for admin)
-    const userOrderIds = allOrders.map(order => order._id.toString());
-    const userInvoices = invoices.filter(invoice => 
-      invoice.order && userOrderIds.includes(invoice.order._id?.toString() || invoice.order.toString())
-    );
+    // Filter overdue invoices by user's orders (for non-admin)
+    const filteredOverdueInvoices = authUser.role === 'admin' 
+      ? overdueInvoices 
+      : overdueInvoices.filter(inv => 
+          inv.order?.createdBy?.toString() === authUser.userId
+        );
 
-    // Today's orders
-    const todayOrders = allOrders.filter(
-      (order) => new Date(order.createdAt) >= startOfToday
-    );
+    // Get month stats with aggregation (much faster)
+    const monthStats = await Order.aggregate([
+      {
+        $match: {
+          ...orderFilter,
+          createdAt: { $gte: startOfMonth }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: '$finalAmount' },
+          totalOrders: { $sum: 1 },
+          uniqueCustomers: { $addToSet: '$customer' }
+        }
+      }
+    ]);
+
+    const monthData = monthStats[0] || { totalRevenue: 0, totalOrders: 0, uniqueCustomers: [] };
+
+    // Calculate today's revenue
     const todayRevenue = todayOrders.reduce((sum, order) => sum + (order.finalAmount || 0), 0);
 
-    // This month's orders
-    const monthOrders = allOrders.filter(
-      (order) => new Date(order.createdAt) >= startOfMonth
-    );
-
-    // Pending orders (need action)
-    const pendingOrdersList = allOrders.filter((order) =>
-      ['pending', 'confirmed', 'processing'].includes(order.status)
-    );
-
-    // Low stock products
-    const lowStockProducts = products
-      .filter((product) => product.stock > 0 && product.stock <= (product.minStockLevel || 10))
-      .sort((a, b) => a.stock - b.stock)
-      .slice(0, 5)
-      .map((product) => ({
-        _id: product._id,
-        name: product.name,
-        size: product.size,
-        stock: product.stock,
-        minStockLevel: product.minStockLevel || 10,
+    // Prepare overdue payments list
+    const overduePaymentsList = filteredOverdueInvoices
+      .filter(inv => inv.order)
+      .map(invoice => ({
+        orderId: invoice.order._id,
+        orderNumber: invoice.order.orderNumber,
+        customerId: invoice.order.customer?._id,
+        customerName: invoice.order.customer?.name || 'Unknown',
+        dueAmount: invoice.balanceAmount,
+        dueDate: invoice.dueDate,
       }));
 
-    // Overdue payments
-    const overdueInvoices = userInvoices.filter((invoice) => {
-      return (
-        (invoice.status === 'sent' || invoice.status === 'partial') &&
-        new Date(invoice.dueDate) < new Date() &&
-        invoice.balanceAmount > 0
-      );
-    });
+    const overdueAmount = filteredOverdueInvoices.reduce((sum, inv) => sum + (inv.balanceAmount || 0), 0);
 
-    const overduePaymentsList = [];
-    for (const invoice of overdueInvoices.slice(0, 10)) {
-      const order = allOrders.find((o) => o._id.toString() === invoice.order?.toString());
-      if (order) {
-        overduePaymentsList.push({
-          orderId: order._id,
-          orderNumber: order.orderNumber,
-          customerId: order.customer?._id,
-          customerName: order.customer?.name || 'Unknown',
-          dueAmount: invoice.balanceAmount,
-          dueDate: invoice.dueDate,
-        });
-      }
-    }
-
-    const overdueAmount = overdueInvoices.reduce((sum, inv) => sum + (inv.balanceAmount || 0), 0);
-
-    // Recent deliveries (last 5)
-    const recentDeliveries = allOrders
-      .filter((order) => order.status === 'delivered')
-      .slice(0, 5)
-      .map((order) => ({
-        _id: order._id,
-        orderNumber: order.orderNumber,
-        customer: {
-          _id: order.customer?._id,
-          name: order.customer?.name || 'Unknown',
-        },
-        finalAmount: order.finalAmount,
-        updatedAt: order.updatedAt,
-      }));
-
-    // Summary
-    const totalRevenue = monthOrders.reduce((sum, order) => sum + (order.finalAmount || 0), 0);
-    const totalOrders = monthOrders.length;
-    const pendingOrders = pendingOrdersList.length;
-    const totalCustomers = customers.length;
-    const activeCustomers = new Set(monthOrders.map((order) => order.customer?._id?.toString())).size;
-    const totalStock = products.reduce((sum, product) => sum + (product.stock || 0), 0);
+    // Get total stock count (aggregation is faster)
+    const stockStats = await Product.aggregate([
+      { $group: { _id: null, totalStock: { $sum: '$stock' } } }
+    ]);
+    const totalStock = stockStats[0]?.totalStock || 0;
 
     const dashboard = {
       summary: {
-        totalRevenue,
-        totalOrders,
-        pendingOrders,
-        totalCustomers,
-        activeCustomers,
+        totalRevenue: monthData.totalRevenue,
+        totalOrders: monthData.totalOrders,
+        pendingOrders: pendingOrdersList.length,
+        totalCustomers: customers,
+        activeCustomers: monthData.uniqueCustomers.length,
         totalStock,
         lowStockProducts: lowStockProducts.length,
       },
@@ -138,7 +163,7 @@ export async function GET(request) {
         revenue: todayRevenue,
         orders: todayOrders.length,
       },
-      todayOrders: todayOrders.map((order) => ({
+      todayOrders: todayOrders.slice(0, 10).map((order) => ({
         _id: order._id,
         orderNumber: order.orderNumber,
         customer: {
@@ -162,11 +187,20 @@ export async function GET(request) {
       })),
       lowStockProducts,
       overduePayments: {
-        count: overdueInvoices.length,
+        count: filteredOverdueInvoices.length,
         amount: overdueAmount,
-        list: overduePaymentsList,
+        list: overduePaymentsList.slice(0, 10),
       },
-      recentDeliveries,
+      recentDeliveries: recentDeliveries.slice(0, 5).map((order) => ({
+        _id: order._id,
+        orderNumber: order.orderNumber,
+        customer: {
+          _id: order.customer?._id,
+          name: order.customer?.name || 'Unknown',
+        },
+        finalAmount: order.finalAmount,
+        updatedAt: order.updatedAt,
+      })),
     };
 
     return NextResponse.json({

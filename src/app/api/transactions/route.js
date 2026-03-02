@@ -33,6 +33,7 @@ export async function GET(request) {
     const type = searchParams.get('type');
     const category = searchParams.get('category');
     const dateFilter = searchParams.get('date');
+    const search = searchParams.get('search');
     const page = parseInt(searchParams.get('page')) || 1;
     const limit = parseInt(searchParams.get('limit')) || 20;
 
@@ -68,20 +69,35 @@ export async function GET(request) {
       .populate('createdBy', 'name')
       .sort({ date: -1 });
 
-    // Calculate totals
-    const totalIncome = transactions
+    // Apply search filter (after population)
+    let filteredTransactions = transactions;
+    if (search) {
+      const searchLower = search.toLowerCase();
+      filteredTransactions = transactions.filter((transaction) => {
+        return (
+          transaction.description?.toLowerCase().includes(searchLower) ||
+          transaction.reference?.toLowerCase().includes(searchLower) ||
+          transaction.transactionNumber?.toLowerCase().includes(searchLower) ||
+          transaction.customer?.name?.toLowerCase().includes(searchLower) ||
+          transaction.order?.orderNumber?.toLowerCase().includes(searchLower)
+        );
+      });
+    }
+
+    // Calculate totals from filtered transactions
+    const totalIncome = filteredTransactions
       .filter((t) => t.type === 'income')
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const totalExpense = transactions
+    const totalExpense = filteredTransactions
       .filter((t) => t.type === 'expense')
       .reduce((sum, t) => sum + t.amount, 0);
 
     // Calculate pagination
-    const totalTransactions = transactions.length;
+    const totalTransactions = filteredTransactions.length;
     const totalPages = Math.ceil(totalTransactions / limit);
     const skip = (page - 1) * limit;
-    const paginatedTransactions = transactions.slice(skip, skip + limit);
+    const paginatedTransactions = filteredTransactions.slice(skip, skip + limit);
 
     return NextResponse.json({
       success: true,
@@ -153,7 +169,7 @@ export async function POST(request) {
     await connectDB();
 
     // Generate unique transaction number using utility function
-    const transactionNumber = await generateTransactionNumber();
+    const transactionNumber = generateTransactionNumber();
 
     // Prepare transaction data - convert empty strings to null for ObjectId fields
     const transactionData = {

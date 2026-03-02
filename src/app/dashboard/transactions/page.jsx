@@ -48,6 +48,7 @@ import {
   ArrowDownCircle,
   Pencil,
   Trash2,
+  Search,
 } from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
@@ -85,6 +86,7 @@ export default function TransactionsPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [formData, setFormData] = useState({
     type: "income",
@@ -114,7 +116,7 @@ export default function TransactionsPage() {
       fetchCustomers();
       fetchOrders();
     }
-  }, [typeFilter, categoryFilter, dateFilter, currentPage, isAdmin]);
+  }, [typeFilter, categoryFilter, dateFilter, searchQuery, currentPage, isAdmin]);
 
   const fetchTransactions = async () => {
     try {
@@ -123,6 +125,7 @@ export default function TransactionsPage() {
       if (typeFilter !== "all") url += `type=${typeFilter}&`;
       if (categoryFilter !== "all") url += `category=${categoryFilter}&`;
       if (dateFilter !== "all") url += `date=${dateFilter}&`;
+      if (searchQuery) url += `search=${encodeURIComponent(searchQuery)}&`;
       url += `page=${currentPage}&limit=20`;
 
       const response = await fetch(url);
@@ -573,47 +576,91 @@ export default function TransactionsPage() {
       {/* Filters */}
       <Card>
         <CardHeader>
-          <CardTitle>Filters</CardTitle>
+          <CardTitle>Filters & Search</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="income">Income</SelectItem>
-                <SelectItem value="expense">Expense</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                <SelectItem value="sale">Sale</SelectItem>
-                <SelectItem value="purchase">Purchase</SelectItem>
-                <SelectItem value="salary">Salary</SelectItem>
-                <SelectItem value="fuel">Fuel</SelectItem>
-                <SelectItem value="maintenance">Maintenance</SelectItem>
-                <SelectItem value="rent">Rent</SelectItem>
-                <SelectItem value="utility">Utility</SelectItem>
-                <SelectItem value="other">Other</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={dateFilter} onValueChange={setDateFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="Date" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Time</SelectItem>
-                <SelectItem value="today">Today</SelectItem>
-                <SelectItem value="week">This Week</SelectItem>
-                <SelectItem value="month">This Month</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="space-y-4">
+            {/* Search Field */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Search by description, order number, customer name, or reference..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1); // Reset to first page on search
+                }}
+                className="pl-10"
+              />
+            </div>
+            
+            {/* Filter Dropdowns */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Select value={typeFilter} onValueChange={(value) => {
+                setTypeFilter(value);
+                setCurrentPage(1);
+              }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="income">Income</SelectItem>
+                  <SelectItem value="expense">Expense</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={categoryFilter} onValueChange={(value) => {
+                setCategoryFilter(value);
+                setCurrentPage(1);
+              }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  <SelectItem value="sale">Sale</SelectItem>
+                  <SelectItem value="purchase">Purchase</SelectItem>
+                  <SelectItem value="salary">Salary</SelectItem>
+                  <SelectItem value="fuel">Fuel</SelectItem>
+                  <SelectItem value="maintenance">Maintenance</SelectItem>
+                  <SelectItem value="rent">Rent</SelectItem>
+                  <SelectItem value="utility">Utility</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={dateFilter} onValueChange={(value) => {
+                setDateFilter(value);
+                setCurrentPage(1);
+              }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Date" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Time</SelectItem>
+                  <SelectItem value="today">Today</SelectItem>
+                  <SelectItem value="week">This Week</SelectItem>
+                  <SelectItem value="month">This Month</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {/* Clear Filters Button */}
+            {(searchQuery || typeFilter !== "all" || categoryFilter !== "all" || dateFilter !== "all") && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSearchQuery("");
+                  setTypeFilter("all");
+                  setCategoryFilter("all");
+                  setDateFilter("all");
+                  setCurrentPage(1);
+                }}
+                className="w-full md:w-auto"
+              >
+                Clear All Filters
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>

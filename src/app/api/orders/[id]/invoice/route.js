@@ -81,7 +81,7 @@ export async function POST(request, { params }) {
     }
 
     // Generate unique invoice number using utility function
-    const invoiceNumber = await generateInvoiceNumber();
+    const invoiceNumber = generateInvoiceNumber();
 
     // Prepare invoice data
     const invoiceData = {
@@ -112,9 +112,12 @@ export async function POST(request, { params }) {
 
     const invoice = await Invoice.create(invoiceData);
 
+    // Update order with invoice reference
+    await Order.findByIdAndUpdate(order._id, { invoice: invoice._id });
+
     // Create transaction if payment is made
     if (paid > 0) {
-      const transactionNumber = await generateTransactionNumber();
+      const transactionNumber = generateTransactionNumber();
 
       await Transaction.create({
         transactionNumber,

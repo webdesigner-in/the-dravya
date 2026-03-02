@@ -25,6 +25,7 @@ import {
   Bell,
   Calendar,
   Eye,
+  RefreshCw,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import Link from "next/link";
@@ -48,12 +49,19 @@ export default function DashboardPage() {
   const fetchDashboardData = async () => {
     setIsLoading(true);
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+      
       const response = await fetch("/api/dashboard", {
         cache: 'no-store',
         headers: {
           'Cache-Control': 'no-cache',
         },
+        signal: controller.signal,
       });
+      
+      clearTimeout(timeoutId);
+      
       if (response.ok) {
         const data = await response.json();
         setDashboardData(data.dashboard);
@@ -62,7 +70,11 @@ export default function DashboardPage() {
         setDashboardData(null);
       }
     } catch (error) {
-      console.error("Error fetching dashboard data:", error);
+      if (error.name === 'AbortError') {
+        console.error("Dashboard request timed out");
+      } else {
+        console.error("Error fetching dashboard data:", error);
+      }
       setDashboardData(null);
     } finally {
       setIsLoading(false);
@@ -79,9 +91,16 @@ export default function DashboardPage() {
 
   if (!dashboardData) {
     return (
-      <div className="flex flex-col justify-center items-center h-screen gap-4">
-        <p className="text-muted-foreground">Failed to load dashboard data</p>
-        <Button onClick={fetchDashboardData} variant="outline">
+      <div className="flex flex-col justify-center items-center h-screen gap-4 p-4">
+        <XCircle className="h-16 w-16 text-red-500" />
+        <div className="text-center">
+          <p className="text-lg font-semibold mb-2">Failed to load dashboard</p>
+          <p className="text-sm text-muted-foreground mb-4">
+            Please check your internet connection and try again
+          </p>
+        </div>
+        <Button onClick={fetchDashboardData} size="lg">
+          <RefreshCw className="mr-2 h-4 w-4" />
           Retry
         </Button>
       </div>

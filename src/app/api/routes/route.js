@@ -73,7 +73,7 @@ export async function POST(request) {
     await connectDB();
 
     // Generate unique route number using utility function
-    const routeNumber = await generateRouteNumber();
+    const routeNumber = generateRouteNumber();
 
     const route = await Route.create({
       ...body,

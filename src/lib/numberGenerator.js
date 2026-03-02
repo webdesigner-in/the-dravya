@@ -1,93 +1,77 @@
 /**
- * Utility functions for generating unique sequential numbers
- * Uses MongoDB's findOneAndUpdate with atomic increment to prevent duplicates
+ * Utility functions for generating unique numbers using UUID
+ * No gaps, no conflicts, no database counters needed
  */
 
-import mongoose from 'mongoose';
-
-// Counter schema for atomic increments
-const CounterSchema = new mongoose.Schema({
-  _id: { type: String, required: true },
-  seq: { type: Number, default: 0 }
-});
-
-// Delete existing model if it exists
-if (mongoose.models.Counter) {
-  delete mongoose.models.Counter;
-}
-
-const Counter = mongoose.model('Counter', CounterSchema);
+import { randomBytes } from 'crypto';
 
 /**
- * Get next sequence number atomically
- * This prevents race conditions even with concurrent requests
+ * Generate a short unique ID (8 characters)
+ * Uses crypto.randomBytes for true randomness
  */
-async function getNextSequence(name) {
-  const counter = await Counter.findOneAndUpdate(
-    { _id: name },
-    { $inc: { seq: 1 } },
-    { new: true, upsert: true }
-  );
-  return counter.seq;
+function generateShortId() {
+  return randomBytes(4).toString('hex').toUpperCase();
 }
 
 /**
  * Generate unique invoice number
- * Format: INV-{YEAR}{MONTH}-{TIMESTAMP}-{SEQ}
- * Example: INV-202602-1709123456-001
- * This format ensures uniqueness even with concurrent requests and deletions
+ * Format: INV-YYYYMMDD-XXXXXXXX
+ * Example: INV-20260302-A3F5B2C1
+ * - No gaps when invoices are deleted
+ * - No conflicts even with concurrent requests
+ * - Easy to read and search
  */
-export async function generateInvoiceNumber() {
+export function generateInvoiceNumber() {
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
-  const timestamp = Math.floor(now.getTime() / 1000); // Unix timestamp in seconds
-  const seq = await getNextSequence('invoice');
+  const day = String(now.getDate()).padStart(2, '0');
+  const uniqueId = generateShortId();
   
-  return `INV-${year}${month}-${timestamp}-${String(seq).padStart(3, '0')}`;
+  return `INV-${year}${month}${day}-${uniqueId}`;
 }
 
 /**
  * Generate unique transaction number
- * Format: TXN-{YEAR}{MONTH}-{TIMESTAMP}-{SEQ}
- * Example: TXN-202602-1709123456-001
+ * Format: TXN-YYYYMMDD-XXXXXXXX
+ * Example: TXN-20260302-B7D4E9F2
  */
-export async function generateTransactionNumber() {
+export function generateTransactionNumber() {
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
-  const timestamp = Math.floor(now.getTime() / 1000);
-  const seq = await getNextSequence('transaction');
+  const day = String(now.getDate()).padStart(2, '0');
+  const uniqueId = generateShortId();
   
-  return `TXN-${year}${month}-${timestamp}-${String(seq).padStart(3, '0')}`;
+  return `TXN-${year}${month}${day}-${uniqueId}`;
 }
 
 /**
  * Generate unique order number
- * Format: ORD-{YEAR}{MONTH}-{TIMESTAMP}-{SEQ}
- * Example: ORD-202602-1709123456-001
+ * Format: ORD-YYYYMMDD-XXXXXXXX
+ * Example: ORD-20260302-C8E5A1D3
  */
-export async function generateOrderNumber() {
+export function generateOrderNumber() {
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
-  const timestamp = Math.floor(now.getTime() / 1000);
-  const seq = await getNextSequence('order');
+  const day = String(now.getDate()).padStart(2, '0');
+  const uniqueId = generateShortId();
   
-  return `ORD-${year}${month}-${timestamp}-${String(seq).padStart(3, '0')}`;
+  return `ORD-${year}${month}${day}-${uniqueId}`;
 }
 
 /**
  * Generate unique route number
- * Format: RT-{YEAR}{MONTH}-{TIMESTAMP}-{SEQ}
- * Example: RT-202602-1709123456-001
+ * Format: RT-YYYYMMDD-XXXXXXXX
+ * Example: RT-20260302-D9F6B2E4
  */
-export async function generateRouteNumber() {
+export function generateRouteNumber() {
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
-  const timestamp = Math.floor(now.getTime() / 1000);
-  const seq = await getNextSequence('route');
+  const day = String(now.getDate()).padStart(2, '0');
+  const uniqueId = generateShortId();
   
-  return `RT-${year}${month}-${timestamp}-${String(seq).padStart(3, '0')}`;
+  return `RT-${year}${month}${day}-${uniqueId}`;
 }
