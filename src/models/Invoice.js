@@ -40,7 +40,18 @@ const InvoiceSchema = new mongoose.Schema(
     customer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Customer',
-      required: true,
+      required: false, // Optional for guest orders
+    },
+    guestInfo: {
+      name: {
+        type: String,
+      },
+      phone: {
+        type: String,
+      },
+      address: {
+        type: String,
+      },
     },
     items: [InvoiceItemSchema],
     subtotal: {
@@ -75,6 +86,32 @@ const InvoiceSchema = new mongoose.Schema(
       enum: ['draft', 'sent', 'paid', 'partial', 'overdue', 'cancelled'],
       default: 'draft',
     },
+    paymentHistory: [{
+      amount: {
+        type: Number,
+        required: true,
+      },
+      paymentMethod: {
+        type: String,
+        enum: ['cash', 'card', 'upi', 'bank-transfer', 'cheque', 'credit'],
+        required: true,
+      },
+      transactionId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Transaction',
+      },
+      date: {
+        type: Date,
+        default: Date.now,
+      },
+      notes: {
+        type: String,
+      },
+      recordedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+      },
+    }],
     issueDate: {
       type: Date,
       required: true,

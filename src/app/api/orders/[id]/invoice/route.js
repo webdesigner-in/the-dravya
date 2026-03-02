@@ -87,7 +87,6 @@ export async function POST(request, { params }) {
     const invoiceData = {
       invoiceNumber,
       order: order._id,
-      customer: order.customer,
       items: invoiceItems,
       subtotal: calculatedSubtotal,
       discount: order.discount || 0,
@@ -100,6 +99,13 @@ export async function POST(request, { params }) {
       paymentTerms: paymentTerms || 'Due on receipt',
       createdBy: authUser.userId,
     };
+
+    // Add customer or guest info based on order type
+    if (order.orderType === 'guest') {
+      invoiceData.guestInfo = order.guestInfo;
+    } else {
+      invoiceData.customer = order.customer;
+    }
 
     // Only add dueDate if it's not null
     if (invoiceDueDate !== null) {
@@ -119,7 +125,7 @@ export async function POST(request, { params }) {
     if (paid > 0) {
       const transactionNumber = generateTransactionNumber();
 
-      await Transaction.create({
+      const transactionData = {
         transactionNumber,
         type: 'income',
         category: 'sale',
@@ -127,18 +133,24 @@ export async function POST(request, { params }) {
         paymentMethod: order.paymentMethod || 'cash',
         paymentStatus: 'completed',
         order: order._id,
-        customer: order.customer,
         description: `Payment received for invoice ${invoiceNumber} (Order: ${order.orderNumber})`,
         reference: invoiceNumber,
         date: new Date(),
         notes: paymentStatus === 'partial' ? `Partial payment of ₹${paid} out of ₹${order.finalAmount}` : 'Full payment received',
         createdBy: authUser.userId,
-      });
+      };
+
+      // Add customer only for regular orders
+      if (order.orderType !== 'guest' && order.customer) {
+        transactionData.customer = order.customer;
+      }
+
+      await Transaction.create(transactionData);
     }
 
     const populatedInvoice = await Invoice.findById(invoice._id)
       .populate('customer', 'name phone email address')
-      .populate('order', 'orderNumber')
+      .populate('order', 'orderNumber orderType guestInfo')
       .populate('items.product', 'name sku');
 
     return NextResponse.json(

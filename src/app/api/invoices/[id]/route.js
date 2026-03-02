@@ -23,7 +23,7 @@ export async function GET(request, { params }) {
 
     const invoice = await Invoice.findById(id)
       .populate('customer', 'name phone email address')
-      .populate('order', 'orderNumber')
+      .populate('order', 'orderNumber orderType guestInfo')
       .populate('items.product', 'name sku')
       .populate('createdBy', 'name email');
 

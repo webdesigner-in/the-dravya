@@ -22,7 +22,7 @@ export async function POST(request, { params }) {
     const { id } = await params;
     const invoice = await Invoice.findById(id)
       .populate('customer', 'name phone')
-      .populate('order', 'orderNumber');
+      .populate('order', 'orderNumber orderType guestInfo');
 
     if (!invoice) {
       return NextResponse.json(
@@ -31,15 +31,27 @@ export async function POST(request, { params }) {
       );
     }
 
-    if (!invoice.customer?.phone) {
+    // Get phone number from customer or guest info
+    let phone = null;
+    let customerName = 'Customer';
+
+    if (invoice.customer) {
+      phone = invoice.customer.phone;
+      customerName = invoice.customer.name;
+    } else if (invoice.guestInfo) {
+      phone = invoice.guestInfo.phone;
+      customerName = invoice.guestInfo.name;
+    }
+
+    if (!phone) {
       return NextResponse.json(
-        { error: 'Customer phone number not available' },
+        { error: 'Phone number not available for this invoice' },
         { status: 400 }
       );
     }
 
     // Clean phone number (remove spaces, dashes, etc.)
-    let phone = invoice.customer.phone.replace(/\D/g, '');
+    phone = phone.replace(/\D/g, '');
     
     // Add country code if not present (assuming India +91)
     if (!phone.startsWith('91') && phone.length === 10) {
@@ -47,7 +59,7 @@ export async function POST(request, { params }) {
     }
 
     // Generate invoice message
-    const message = generateWhatsAppMessage(invoice);
+    const message = generateWhatsAppMessage(invoice, customerName);
 
     // Create WhatsApp URL
     const whatsappUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
@@ -66,8 +78,7 @@ export async function POST(request, { params }) {
   }
 }
 
-function generateWhatsAppMessage(invoice) {
-  const customerName = invoice.customer?.name || 'Customer';
+function generateWhatsAppMessage(invoice, customerName) {
   const invoiceNumber = invoice.invoiceNumber;
   const orderNumber = invoice.order?.orderNumber || 'N/A';
   const totalAmount = invoice.totalAmount.toFixed(2);

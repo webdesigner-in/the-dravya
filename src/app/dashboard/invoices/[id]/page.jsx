@@ -79,8 +79,11 @@ export default function InvoiceDetailPage() {
   };
 
   const handleShareWhatsApp = async () => {
-    if (!invoice?.customer?.phone) {
-      toast.error("Customer phone number not available");
+    // Check for phone number in customer or guest info
+    const hasPhone = invoice?.customer?.phone || invoice?.guestInfo?.phone;
+    
+    if (!hasPhone) {
+      toast.error("Phone number not available for this invoice");
       return;
     }
 
@@ -196,20 +199,37 @@ export default function InvoiceDetailPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
               <h3 className="font-semibold mb-2 text-sm sm:text-base">Bill To:</h3>
-              <p className="font-medium text-sm sm:text-base">{invoice.customer?.name}</p>
-              <p className="text-xs sm:text-sm text-muted-foreground">{invoice.customer?.phone}</p>
-              {invoice.customer?.email && (
-                <p className="text-xs sm:text-sm text-muted-foreground">{invoice.customer.email}</p>
-              )}
-              {invoice.customer?.address && (
-                <div className="text-xs sm:text-sm text-muted-foreground mt-1">
-                  <p>{invoice.customer.address.street}</p>
-                  <p>{invoice.customer.address.area}</p>
-                  <p>
-                    {invoice.customer.address.city}, {invoice.customer.address.state} -{" "}
-                    {invoice.customer.address.pincode}
-                  </p>
-                </div>
+              {invoice.customer ? (
+                <>
+                  <p className="font-medium text-sm sm:text-base">{invoice.customer.name}</p>
+                  <p className="text-xs sm:text-sm text-muted-foreground">{invoice.customer.phone}</p>
+                  {invoice.customer.email && (
+                    <p className="text-xs sm:text-sm text-muted-foreground">{invoice.customer.email}</p>
+                  )}
+                  {invoice.customer.address && (
+                    <div className="text-xs sm:text-sm text-muted-foreground mt-1">
+                      <p>{invoice.customer.address.street}</p>
+                      <p>{invoice.customer.address.area}</p>
+                      <p>
+                        {invoice.customer.address.city}, {invoice.customer.address.state} -{" "}
+                        {invoice.customer.address.pincode}
+                      </p>
+                    </div>
+                  )}
+                </>
+              ) : invoice.guestInfo ? (
+                <>
+                  <p className="font-medium text-sm sm:text-base">{invoice.guestInfo.name}</p>
+                  {invoice.guestInfo.phone && (
+                    <p className="text-xs sm:text-sm text-muted-foreground">{invoice.guestInfo.phone}</p>
+                  )}
+                  {invoice.guestInfo.address && (
+                    <p className="text-xs sm:text-sm text-muted-foreground mt-1">{invoice.guestInfo.address}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-2 italic">(Guest Customer)</p>
+                </>
+              ) : (
+                <p className="text-xs sm:text-sm text-muted-foreground">Customer information not available</p>
               )}
             </div>
             <div className="sm:text-right">

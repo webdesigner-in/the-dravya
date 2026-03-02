@@ -714,9 +714,11 @@ export default function TransactionsPage() {
                             <span className="capitalize">
                               {transaction.paymentMethod}
                             </span>
-                            {transaction.customer && (
+                            {transaction.customer ? (
                               <span>{transaction.customer.name}</span>
-                            )}
+                            ) : transaction.order?.orderType === 'guest' && transaction.order?.guestInfo?.name ? (
+                              <span>{transaction.order.guestInfo.name} (Guest)</span>
+                            ) : null}
                           </div>
                         </div>
                       </div>

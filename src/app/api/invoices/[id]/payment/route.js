@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Invoice from '@/models/Invoice';
-import Transaction from '@/models/Transaction';
 import Order from '@/models/Order';
-import Customer from '@/models/Customer';
+import Transaction from '@/models/Transaction';
 import { getAuthUser } from '@/lib/auth';
+import { generateTransactionNumber } from '@/lib/numberGenerator';
 
-// POST record payment for invoice
+// POST record payment on invoice
 export async function POST(request, { params }) {
   try {
     const authUser = await getAuthUser();
@@ -31,10 +31,8 @@ export async function POST(request, { params }) {
       );
     }
 
-    // Get invoice
-    const invoice = await Invoice.findById(id)
-      .populate('order', 'orderNumber paymentMethod')
-      .populate('customer', 'name');
+    // Get invoice with order
+    const invoice = await Invoice.findById(id).populate('order');
 
     if (!invoice) {
       return NextResponse.json(
@@ -43,53 +41,110 @@ export async function POST(request, { params }) {
       );
     }
 
-    // Calculate new paid amount
-    const newPaidAmount = invoice.paidAmount + parseFloat(amount);
-    const newBalanceAmount = invoice.totalAmount - newPaidAmount;
-
-    // Determine new status
-    let newStatus = invoice.status;
-    if (newPaidAmount >= invoice.totalAmount) {
-      newStatus = 'paid';
-    } else if (newPaidAmount > 0) {
-      newStatus = 'partial';
+    // Check if already fully paid
+    if (invoice.status === 'paid' && invoice.balanceAmount <= 0) {
+      return NextResponse.json(
+        { error: 'Invoice is already fully paid' },
+        { status: 400 }
+      );
     }
 
-    // Update invoice
-    invoice.paidAmount = newPaidAmount;
-    invoice.balanceAmount = newBalanceAmount;
-    invoice.status = newStatus;
-    await invoice.save();
+    // Validate payment amount doesn't exceed balance
+    const paymentAmount = parseFloat(amount);
+    if (paymentAmount > invoice.balanceAmount) {
+      return NextResponse.json(
+        { error: `Payment amount (₹${paymentAmount}) exceeds balance due (₹${invoice.balanceAmount})` },
+        { status: 400 }
+      );
+    }
 
-    // Create transaction
-    const transactionCount = await Transaction.countDocuments();
-    const transactionNumber = `TXN${String(transactionCount + 1).padStart(6, '0')}`;
-
-    await Transaction.create({
+    // Create transaction for this payment
+    const transactionNumber = generateTransactionNumber();
+    const transactionData = {
       transactionNumber,
       type: 'income',
       category: 'sale',
-      amount: parseFloat(amount),
-      paymentMethod: paymentMethod || invoice.order?.paymentMethod || 'cash',
+      amount: paymentAmount,
+      paymentMethod: paymentMethod || 'cash',
       paymentStatus: 'completed',
-      order: invoice.order?._id,
-      customer: invoice.customer._id,
-      description: `Payment received for invoice ${invoice.invoiceNumber}${invoice.order ? ` (Order: ${invoice.order.orderNumber})` : ''}`,
+      order: invoice.order._id,
+      description: `Payment received for invoice ${invoice.invoiceNumber} (Order: ${invoice.order.orderNumber})`,
       reference: invoice.invoiceNumber,
       date: new Date(),
-      notes: notes || (newStatus === 'paid' ? 'Full payment completed' : `Partial payment - Balance: ₹${newBalanceAmount.toFixed(2)}`),
+      notes: notes || `Payment ${invoice.paymentHistory.length + 1}`,
       createdBy: authUser.userId,
+    };
+
+    // Add customer only if it exists (not for guest orders)
+    if (invoice.customer) {
+      transactionData.customer = invoice.customer;
+    }
+
+    const transaction = await Transaction.create(transactionData);
+
+    // Update invoice
+    const newPaidAmount = invoice.paidAmount + paymentAmount;
+    const newBalanceAmount = invoice.totalAmount - newPaidAmount;
+
+    // Determine new status
+    let newStatus = 'partial';
+    if (newBalanceAmount <= 0) {
+      newStatus = 'paid';
+    } else if (newPaidAmount === 0) {
+      newStatus = 'sent';
+    }
+
+    // Add to payment history
+    invoice.paymentHistory.push({
+      amount: paymentAmount,
+      paymentMethod: paymentMethod || 'cash',
+      transactionId: transaction._id,
+      date: new Date(),
+      notes: notes || '',
+      recordedBy: authUser.userId,
     });
 
-    const updatedInvoice = await Invoice.findById(id)
-      .populate('customer', 'name phone email address')
-      .populate('order', 'orderNumber');
+    invoice.paidAmount = newPaidAmount;
+    invoice.balanceAmount = newBalanceAmount;
+    invoice.status = newStatus;
 
-    return NextResponse.json({
-      success: true,
-      invoice: updatedInvoice,
-      message: 'Payment recorded successfully',
-    });
+    // Clear due date if fully paid
+    if (newStatus === 'paid') {
+      invoice.dueDate = null;
+    }
+
+    await invoice.save();
+
+    // Update order payment status
+    const order = invoice.order;
+    order.paidAmount = newPaidAmount;
+    
+    if (newPaidAmount >= order.finalAmount) {
+      order.paymentStatus = 'paid';
+    } else if (newPaidAmount > 0) {
+      order.paymentStatus = 'partial';
+    } else {
+      order.paymentStatus = 'unpaid';
+    }
+    
+    await order.save();
+
+    // Populate and return updated invoice
+    const updatedInvoice = await Invoice.findById(invoice._id)
+      .populate('customer', 'name phone email')
+      .populate('order', 'orderNumber')
+      .populate('paymentHistory.recordedBy', 'name')
+      .populate('paymentHistory.transactionId', 'transactionNumber');
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: `Payment of ₹${paymentAmount.toFixed(2)} recorded successfully`,
+        invoice: updatedInvoice,
+        transaction,
+      },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('Record payment error:', error);
     return NextResponse.json(

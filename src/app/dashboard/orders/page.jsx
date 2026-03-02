@@ -71,10 +71,14 @@ export default function OrdersPage() {
   const [isUnpaidDialogOpen, setIsUnpaidDialogOpen] = useState(false);
   const [isViewOrderDialogOpen, setIsViewOrderDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isRecordPaymentDialogOpen, setIsRecordPaymentDialogOpen] = useState(false);
   const [orderToDelete, setOrderToDelete] = useState(null);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [paymentNotes, setPaymentNotes] = useState("");
   const [isMounted, setIsMounted] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [selectedCustomerName, setSelectedCustomerName] = useState("");
@@ -507,6 +511,14 @@ export default function OrdersPage() {
   };
 
   const handlePaymentStatusChange = async (order, newStatus) => {
+    // If order has an invoice, don't allow direct payment status changes
+    // User must use "Record Payment" on the invoice instead
+    if (order.invoice) {
+      toast.error("This order has an invoice. Please use 'Record Payment' to update payment status.");
+      return;
+    }
+
+    // For orders WITHOUT invoices, allow direct payment status changes
     // If changing to partial or paid, open dialog
     if (newStatus === "partial" || newStatus === "paid") {
       setSelectedOrder(order);
@@ -1308,10 +1320,28 @@ export default function OrdersPage() {
                           {order.paymentStatus}
                         </span>
                         {order.invoice && (
-                          <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 flex items-center gap-1">
-                            <FileText className="h-3 w-3" />
-                            Invoiced
-                          </span>
+                          <>
+                            <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 flex items-center gap-1">
+                              <FileText className="h-3 w-3" />
+                              Invoiced
+                            </span>
+                            {/* Invoice Payment Status Badge */}
+                            {order.invoice.status === 'paid' && (
+                              <span className="text-xs px-2 py-1 rounded bg-green-100 text-green-700 font-medium">
+                                ✓ Invoice Paid
+                              </span>
+                            )}
+                            {order.invoice.status === 'partial' && (
+                              <span className="text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-700 font-medium">
+                                ⚠ Partial Payment
+                              </span>
+                            )}
+                            {(order.invoice.status === 'sent' || order.invoice.status === 'draft') && order.invoice.balanceAmount > 0 && (
+                              <span className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 font-medium">
+                                ✗ Invoice Unpaid
+                              </span>
+                            )}
+                          </>
                         )}
                       </div>
 
@@ -1354,10 +1384,35 @@ export default function OrdersPage() {
                             {formatDate(order.deliveryDate || order.createdAt)}
                           </p>
                         </div>
+                        {/* Show invoice payment info if invoice exists */}
+                        {order.invoice && (
+                          <>
+                            <div className="col-span-2 sm:col-span-3 pt-2 border-t">
+                              <span className="text-muted-foreground block text-xs">Invoice Status:</span>
+                              <div className="flex items-center gap-2 mt-1">
+                                <p className="font-medium text-sm">{order.invoice.invoiceNumber}</p>
+                                <Badge className={`text-xs ${
+                                  order.invoice.status === 'paid' ? 'bg-green-100 text-green-700' :
+                                  order.invoice.status === 'partial' ? 'bg-yellow-100 text-yellow-700' :
+                                  'bg-red-100 text-red-700'
+                                }`}>
+                                  {order.invoice.status === 'paid' ? 'Paid' :
+                                   order.invoice.status === 'partial' ? 'Partial' : 'Unpaid'}
+                                </Badge>
+                                {order.invoice.paymentHistory && order.invoice.paymentHistory.length > 0 && (
+                                  <span className="text-xs text-muted-foreground">
+                                    ({order.invoice.paymentHistory.length} payment{order.invoice.paymentHistory.length > 1 ? 's' : ''})
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </>
+                        )}
                       </div>
 
-                      {/* Action Buttons */}
-                      <div className={`grid ${order.status === 'cancelled' ? 'grid-cols-2 sm:grid-cols-5' : 'grid-cols-2 sm:grid-cols-4'} gap-2 pt-2 border-t`}>
+                      {/* Action Buttons - Compact Layout */}
+                      <div className="flex flex-wrap gap-2 pt-2 border-t">
+                        {/* Primary Actions */}
                         <Button
                           size="sm"
                           variant="outline"
@@ -1365,28 +1420,27 @@ export default function OrdersPage() {
                             setSelectedOrder(order);
                             setIsViewOrderDialogOpen(true);
                           }}
-                          className="w-full text-xs sm:text-sm h-9"
+                          className="text-xs h-8"
                         >
-                          <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                          View Order
+                          <Eye className="h-3 w-3 mr-1" />
+                          View
                         </Button>
                         
+                        {/* Status Dropdowns - Compact */}
                         <Select
                           value={order.status}
                           onValueChange={(value) =>
                             handleStatusChange(order._id, value)
                           }
                         >
-                          <SelectTrigger className="w-full text-xs sm:text-sm h-9 pr-8">
+                          <SelectTrigger className="text-xs h-8 w-auto min-w-[100px]">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="pending">Pending</SelectItem>
                             <SelectItem value="confirmed">Confirmed</SelectItem>
                             <SelectItem value="processing">Processing</SelectItem>
-                            <SelectItem value="out-for-delivery">
-                              Out for Delivery
-                            </SelectItem>
+                            <SelectItem value="out-for-delivery">Out for Delivery</SelectItem>
                             <SelectItem value="delivered">Delivered</SelectItem>
                             <SelectItem value="cancelled">Cancelled</SelectItem>
                           </SelectContent>
@@ -1397,8 +1451,9 @@ export default function OrdersPage() {
                           onValueChange={(value) =>
                             handlePaymentStatusChange(order, value)
                           }
+                          disabled={!!order.invoice}
                         >
-                          <SelectTrigger className="w-full text-xs sm:text-sm h-9 pr-8">
+                          <SelectTrigger className="text-xs h-8 w-auto min-w-[90px]">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -1408,18 +1463,39 @@ export default function OrdersPage() {
                           </SelectContent>
                         </Select>
 
+                        {/* Invoice Actions */}
                         {order.invoice ? (
-                          <Button
-                            size="sm"
-                            variant="default"
-                            onClick={() => {
-                              window.location.href = `/dashboard/invoices/${order.invoice._id}`;
-                            }}
-                            className="w-full text-xs sm:text-sm h-9"
-                          >
-                            <FileText className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                            View Invoice
-                          </Button>
+                          <>
+                            <Button
+                              size="sm"
+                              variant="default"
+                              onClick={() => {
+                                window.location.href = `/dashboard/invoices/${order.invoice._id}`;
+                              }}
+                              className="text-xs h-8"
+                            >
+                              <FileText className="h-3 w-3 mr-1" />
+                              Invoice
+                            </Button>
+                            {order.invoice.status !== 'paid' && order.invoice.balanceAmount > 0 && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedInvoice(order.invoice);
+                                  setSelectedOrder(order);
+                                  setPaymentAmount("");
+                                  setPaymentMethod("cash");
+                                  setPaymentNotes("");
+                                  setIsRecordPaymentDialogOpen(true);
+                                }}
+                                className="text-xs h-8 border-green-500 text-green-600 hover:bg-green-50"
+                              >
+                                <Plus className="h-3 w-3 mr-1" />
+                                Payment
+                              </Button>
+                            )}
+                          </>
                         ) : (
                           <Button
                             size="sm"
@@ -1428,9 +1504,9 @@ export default function OrdersPage() {
                               setSelectedOrder(order);
                               setIsInvoiceDialogOpen(true);
                             }}
-                            className="w-full text-xs sm:text-sm h-9"
+                            className="text-xs h-8"
                           >
-                            <FileText className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                            <FileText className="h-3 w-3 mr-1" />
                             Create Invoice
                           </Button>
                         )}
@@ -1441,9 +1517,9 @@ export default function OrdersPage() {
                             size="sm"
                             variant="destructive"
                             onClick={() => handleDeleteClick(order)}
-                            className="w-full text-xs sm:text-sm h-9"
+                            className="text-xs h-8"
                           >
-                            <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                            <Trash2 className="h-3 w-3 mr-1" />
                             Delete
                           </Button>
                         )}
@@ -2068,6 +2144,269 @@ export default function OrdersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Record Payment on Invoice Dialog */}
+      <Dialog open={isRecordPaymentDialogOpen} onOpenChange={setIsRecordPaymentDialogOpen}>
+        <DialogContent className="w-[95vw] sm:w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-lg md:text-xl">Record Payment on Invoice</DialogTitle>
+            <DialogDescription className="text-sm">
+              Record a payment for invoice {selectedInvoice?.invoiceNumber}
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedInvoice && (
+            <div className="space-y-4">
+              {/* Invoice Summary */}
+              <div className="p-4 bg-gray-50 rounded-lg border space-y-2">
+                <div className="flex justify-between items-center">
+                  <h4 className="font-semibold text-sm">Invoice Summary</h4>
+                  <Badge className={`${
+                    selectedInvoice.status === 'paid' ? 'bg-green-100 text-green-700' :
+                    selectedInvoice.status === 'partial' ? 'bg-yellow-100 text-yellow-700' :
+                    'bg-red-100 text-red-700'
+                  }`}>
+                    {selectedInvoice.status === 'paid' ? 'Paid' :
+                     selectedInvoice.status === 'partial' ? 'Partial' : 'Unpaid'}
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-sm mt-3">
+                  <div>
+                    <span className="text-muted-foreground block">Invoice Total:</span>
+                    <p className="font-semibold text-base">₹{parseFloat(selectedInvoice.totalAmount || 0).toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground block">Already Paid:</span>
+                    <p className="font-semibold text-base text-green-600">₹{parseFloat(selectedInvoice.paidAmount || 0).toFixed(2)}</p>
+                  </div>
+                  <div className="col-span-2 pt-2 border-t">
+                    <span className="text-muted-foreground block">Balance Due:</span>
+                    <p className="font-bold text-lg text-red-600">₹{parseFloat(selectedInvoice.balanceAmount || 0).toFixed(2)}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Payment History */}
+              {selectedInvoice.paymentHistory && selectedInvoice.paymentHistory.length > 0 && (
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="bg-muted p-3">
+                    <h4 className="font-semibold text-sm">Payment History</h4>
+                  </div>
+                  <div className="divide-y max-h-48 overflow-y-auto">
+                    {selectedInvoice.paymentHistory.map((payment, index) => (
+                      <div key={index} className="p-3 hover:bg-muted/50">
+                        <div className="flex justify-between items-start">
+                          <div className="space-y-1">
+                            <p className="font-medium text-sm">₹{parseFloat(payment.amount).toFixed(2)}</p>
+                            <p className="text-xs text-muted-foreground capitalize">
+                              {payment.paymentMethod} • {formatDate(payment.date)}
+                            </p>
+                            {payment.notes && (
+                              <p className="text-xs text-muted-foreground italic">{payment.notes}</p>
+                            )}
+                          </div>
+                          <Badge variant="outline" className="text-xs">
+                            Payment {index + 1}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* New Payment Form */}
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                
+                const amount = parseFloat(paymentAmount);
+                
+                if (amount <= 0) {
+                  toast.error("Payment amount must be greater than 0");
+                  return;
+                }
+                
+                if (amount > selectedInvoice.balanceAmount) {
+                  toast.error(`Payment amount cannot exceed balance due of ₹${selectedInvoice.balanceAmount.toFixed(2)}`);
+                  return;
+                }
+
+                setIsSubmitting(true);
+                
+                try {
+                  const response = await fetch(`/api/invoices/${selectedInvoice._id}/payment`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      amount,
+                      paymentMethod,
+                      notes: paymentNotes,
+                    }),
+                  });
+
+                  const data = await response.json();
+
+                  if (!response.ok) {
+                    throw new Error(data.error || "Failed to record payment");
+                  }
+
+                  toast.success(data.message || "Payment recorded successfully!");
+                  setIsRecordPaymentDialogOpen(false);
+                  setPaymentAmount("");
+                  setPaymentMethod("cash");
+                  setPaymentNotes("");
+                  setSelectedInvoice(null);
+                  setSelectedOrder(null);
+                  
+                  // Refresh orders to show updated invoice status
+                  await fetchOrders();
+                } catch (error) {
+                  toast.error(error.message);
+                } finally {
+                  setIsSubmitting(false);
+                }
+              }} className="space-y-4">
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h4 className="font-semibold text-sm mb-3">New Payment Details</h4>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="payment-amount" className="text-sm">Payment Amount (₹) *</Label>
+                      <Input
+                        id="payment-amount"
+                        type="number"
+                        value={paymentAmount}
+                        onChange={(e) => setPaymentAmount(e.target.value)}
+                        min="0.01"
+                        max={selectedInvoice.balanceAmount}
+                        step="0.01"
+                        placeholder="Enter amount"
+                        required
+                        autoFocus
+                      />
+                      {paymentAmount && parseFloat(paymentAmount) > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          {parseFloat(selectedInvoice.paidAmount || 0) + parseFloat(paymentAmount) >= parseFloat(selectedInvoice.totalAmount || 0)
+                            ? "✓ This will mark the invoice as PAID"
+                            : `Remaining: ₹${(parseFloat(selectedInvoice.balanceAmount || 0) - parseFloat(paymentAmount)).toFixed(2)}`
+                          }
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="payment-method" className="text-sm">Payment Method *</Label>
+                      <Select
+                        value={paymentMethod}
+                        onValueChange={setPaymentMethod}
+                        required
+                      >
+                        <SelectTrigger id="payment-method">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="cash">Cash</SelectItem>
+                          <SelectItem value="card">Card</SelectItem>
+                          <SelectItem value="upi">UPI</SelectItem>
+                          <SelectItem value="bank-transfer">Bank Transfer</SelectItem>
+                          <SelectItem value="cheque">Cheque</SelectItem>
+                          <SelectItem value="credit">Credit</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 mt-4">
+                    <Label htmlFor="payment-notes" className="text-sm">Notes (Optional)</Label>
+                    <Textarea
+                      id="payment-notes"
+                      value={paymentNotes}
+                      onChange={(e) => setPaymentNotes(e.target.value)}
+                      placeholder="Add any notes about this payment..."
+                      rows={2}
+                      className="resize-none"
+                    />
+                  </div>
+                </div>
+
+                <DialogFooter className="flex-col sm:flex-row gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2 w-full">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setIsRecordPaymentDialogOpen(false);
+                        setPaymentAmount("");
+                        setPaymentMethod("cash");
+                        setPaymentNotes("");
+                        setSelectedInvoice(null);
+                        setSelectedOrder(null);
+                      }}
+                      disabled={isSubmitting}
+                      className="w-full sm:w-auto"
+                    >
+                      Cancel
+                    </Button>
+                    
+                    {/* Reset All Payments Button - Only show if there are payments */}
+                    {selectedInvoice.paymentHistory && selectedInvoice.paymentHistory.length > 0 && (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        onClick={async () => {
+                          if (!confirm(`Are you sure you want to reset all payments on this invoice? This will:\n\n• Mark invoice as unpaid\n• Reset paid amount to ₹0\n• Keep payment history for reference\n• Update order payment status\n\nNote: Transactions will remain in the system for audit purposes.`)) {
+                            return;
+                          }
+
+                          setIsSubmitting(true);
+                          try {
+                            const response = await fetch(`/api/invoices/${selectedInvoice._id}/reset-payments`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                            });
+
+                            const data = await response.json();
+
+                            if (!response.ok) {
+                              throw new Error(data.error || "Failed to reset payments");
+                            }
+
+                            toast.success("All payments reset successfully!");
+                            setIsRecordPaymentDialogOpen(false);
+                            setPaymentAmount("");
+                            setPaymentMethod("cash");
+                            setPaymentNotes("");
+                            setSelectedInvoice(null);
+                            setSelectedOrder(null);
+                            
+                            await fetchOrders();
+                          } catch (error) {
+                            toast.error(error.message);
+                          } finally {
+                            setIsSubmitting(false);
+                          }
+                        }}
+                        disabled={isSubmitting}
+                        className="w-full sm:w-auto"
+                      >
+                        Reset All Payments
+                      </Button>
+                    )}
+                    
+                    <Button 
+                      type="submit"
+                      disabled={!paymentAmount || parseFloat(paymentAmount) <= 0 || isSubmitting}
+                      className="w-full sm:w-auto"
+                    >
+                      {isSubmitting ? "Recording..." : "Record Payment"}
+                    </Button>
+                  </div>
+                </DialogFooter>
+              </form>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

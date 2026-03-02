@@ -107,7 +107,14 @@ export async function GET(request) {
       .populate('items.product', 'name sku size bottlesPerCarton')
       .populate('createdBy', 'name email')
       .populate('assignedTo', 'name email')
-      .populate('invoice', 'invoiceNumber status')
+      .populate({
+        path: 'invoice',
+        select: 'invoiceNumber status paidAmount balanceAmount totalAmount paymentHistory',
+        populate: {
+          path: 'paymentHistory.recordedBy',
+          select: 'name'
+        }
+      })
       .sort(sortOrder);
 
     // Search filter (applied after population)

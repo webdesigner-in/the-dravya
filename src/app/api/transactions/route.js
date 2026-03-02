@@ -65,7 +65,7 @@ export async function GET(request) {
 
     const transactions = await Transaction.find(filter)
       .populate('customer', 'name phone')
-      .populate('order', 'orderNumber')
+      .populate('order', 'orderNumber orderType guestInfo')
       .populate('createdBy', 'name')
       .sort({ date: -1 });
 

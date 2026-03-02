@@ -54,7 +54,7 @@ export async function GET(request) {
 
     const invoices = await Invoice.find(filter)
       .populate('customer', 'name phone email address')
-      .populate('order', 'orderNumber')
+      .populate('order', 'orderNumber orderType guestInfo')
       .populate('createdBy', 'name email')
       .sort({ createdAt: -1 });
 
@@ -66,7 +66,10 @@ export async function GET(request) {
         (invoice) =>
           invoice.invoiceNumber.toLowerCase().includes(searchLower) ||
           invoice.customer?.name.toLowerCase().includes(searchLower) ||
-          invoice.customer?.phone.includes(search)
+          invoice.customer?.phone.includes(search) ||
+          invoice.order?.orderNumber.toLowerCase().includes(searchLower) ||
+          invoice.guestInfo?.name?.toLowerCase().includes(searchLower) ||
+          invoice.guestInfo?.phone?.includes(search)
       );
     }
 

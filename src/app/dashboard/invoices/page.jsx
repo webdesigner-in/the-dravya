@@ -77,7 +77,7 @@ export default function InvoicesPage() {
 
   useEffect(() => {
     fetchInvoices();
-  }, [statusFilter, currentPage]);
+  }, [statusFilter, currentPage, searchQuery]); // Added searchQuery to trigger automatic search
 
   const fetchInvoices = async () => {
     try {
@@ -102,9 +102,9 @@ export default function InvoicesPage() {
     }
   };
 
-  const handleSearch = () => {
-    setCurrentPage(1);
-    fetchInvoices();
+  const handleSearch = (value) => {
+    setSearchQuery(value);
+    setCurrentPage(1); // Reset to first page on search
   };
 
   const handlePageChange = (newPage) => {
@@ -211,18 +211,12 @@ export default function InvoicesPage() {
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
             <div className="sm:col-span-2 lg:col-span-2">
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Search invoices..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && handleSearch()}
-                  className="text-sm"
-                />
-                <Button onClick={handleSearch} size="icon" className="shrink-0">
-                  <Search className="h-4 w-4" />
-                </Button>
-              </div>
+              <Input
+                placeholder="Search by invoice number, order number, or customer name..."
+                value={searchQuery}
+                onChange={(e) => handleSearch(e.target.value)}
+                className="text-sm"
+              />
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger>
@@ -287,7 +281,13 @@ export default function InvoicesPage() {
                       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-xs sm:text-sm">
                         <div>
                           <span className="text-muted-foreground block">Customer:</span>
-                          <p className="font-medium truncate">{invoice.customer?.name}</p>
+                          {invoice.customer ? (
+                            <p className="font-medium truncate">{invoice.customer.name}</p>
+                          ) : invoice.guestInfo ? (
+                            <p className="font-medium truncate">{invoice.guestInfo.name} <span className="text-xs text-muted-foreground">(Guest)</span></p>
+                          ) : (
+                            <p className="font-medium truncate text-muted-foreground">N/A</p>
+                          )}
                         </div>
                         <div>
                           <span className="text-muted-foreground block">Order:</span>
@@ -318,15 +318,15 @@ export default function InvoicesPage() {
                         )}
                       </div>
 
-                      {/* Action Buttons */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t">
+                      {/* Action Buttons - Compact Layout */}
+                      <div className="flex flex-wrap gap-2 pt-2 border-t">
                         <Button 
                           size="sm" 
                           variant="default"
                           onClick={() => router.push(`/dashboard/invoices/${invoice._id}`)}
-                          className="w-full text-xs sm:text-sm h-9"
+                          className="text-xs h-8"
                         >
-                          <Eye className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                          <Eye className="h-3 w-3 mr-1" />
                           View
                         </Button>
                         <Button 
@@ -336,19 +336,19 @@ export default function InvoicesPage() {
                             window.open(`/api/invoices/${invoice._id}/pdf`, '_blank');
                             toast.success("Opening invoice PDF...");
                           }}
-                          className="w-full text-xs sm:text-sm h-9"
+                          className="text-xs h-8"
                         >
-                          <Download className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                          Download
+                          <Download className="h-3 w-3 mr-1" />
+                          PDF
                         </Button>
                         {invoice.order?._id && (
                           <Button 
                             size="sm" 
                             variant="outline"
                             onClick={() => router.push(`/dashboard/orders?search=${invoice.order.orderNumber}`)}
-                            className="w-full text-xs sm:text-sm h-9"
+                            className="text-xs h-8"
                           >
-                            <ShoppingCart className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                            <ShoppingCart className="h-3 w-3 mr-1" />
                             Order
                           </Button>
                         )}
@@ -358,18 +358,18 @@ export default function InvoicesPage() {
                               size="sm" 
                               variant="outline"
                               onClick={() => handleEdit(invoice)}
-                              className="w-full text-xs sm:text-sm h-9"
+                              className="text-xs h-8"
                             >
-                              <Pencil className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                              <Pencil className="h-3 w-3 mr-1" />
                               Edit
                             </Button>
                             <Button 
                               size="sm" 
                               variant="destructive"
                               onClick={() => handleDeleteClick(invoice)}
-                              className="w-full text-xs sm:text-sm h-9"
+                              className="text-xs h-8"
                             >
-                              <Trash2 className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                              <Trash2 className="h-3 w-3 mr-1" />
                               Delete
                             </Button>
                           </>

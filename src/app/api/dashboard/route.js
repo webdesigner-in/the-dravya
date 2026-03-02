@@ -43,7 +43,7 @@ export async function GET(request) {
         ...orderFilter,
         createdAt: { $gte: startOfToday }
       })
-        .select('orderNumber customer finalAmount status createdAt')
+        .select('orderNumber customer orderType guestInfo finalAmount status createdAt')
         .populate('customer', 'name')
         .limit(50)
         .lean(),
@@ -53,7 +53,7 @@ export async function GET(request) {
         ...orderFilter,
         status: { $in: ['pending', 'confirmed', 'processing'] }
       })
-        .select('orderNumber customer finalAmount status createdAt')
+        .select('orderNumber customer orderType guestInfo finalAmount status createdAt')
         .populate('customer', 'name')
         .limit(20)
         .sort({ createdAt: -1 })
@@ -64,7 +64,7 @@ export async function GET(request) {
         ...orderFilter,
         status: 'delivered'
       })
-        .select('orderNumber customer finalAmount updatedAt')
+        .select('orderNumber customer orderType guestInfo finalAmount updatedAt')
         .populate('customer', 'name')
         .limit(10)
         .sort({ updatedAt: -1 })
@@ -89,10 +89,10 @@ export async function GET(request) {
         dueDate: { $lt: new Date() },
         balanceAmount: { $gt: 0 }
       })
-        .select('order balanceAmount dueDate')
+        .select('order customer guestInfo balanceAmount dueDate')
         .populate({
           path: 'order',
-          select: 'orderNumber customer createdBy',
+          select: 'orderNumber customer orderType guestInfo createdBy',
           populate: { path: 'customer', select: 'name' }
         })
         .limit(20)
@@ -129,17 +129,39 @@ export async function GET(request) {
     // Calculate today's revenue
     const todayRevenue = todayOrders.reduce((sum, order) => sum + (order.finalAmount || 0), 0);
 
+    // Helper function to get customer name
+    const getCustomerName = (order) => {
+      if (order.customer?.name) {
+        return order.customer.name;
+      } else if (order.orderType === 'guest' && order.guestInfo?.name) {
+        return `${order.guestInfo.name} (Guest)`;
+      }
+      return 'Unknown';
+    };
+
     // Prepare overdue payments list
     const overduePaymentsList = filteredOverdueInvoices
       .filter(inv => inv.order)
-      .map(invoice => ({
-        orderId: invoice.order._id,
-        orderNumber: invoice.order.orderNumber,
-        customerId: invoice.order.customer?._id,
-        customerName: invoice.order.customer?.name || 'Unknown',
-        dueAmount: invoice.balanceAmount,
-        dueDate: invoice.dueDate,
-      }));
+      .map(invoice => {
+        // Get customer name from invoice or order
+        let customerName = 'Unknown';
+        if (invoice.customer?.name) {
+          customerName = invoice.customer.name;
+        } else if (invoice.guestInfo?.name) {
+          customerName = `${invoice.guestInfo.name} (Guest)`;
+        } else if (invoice.order) {
+          customerName = getCustomerName(invoice.order);
+        }
+
+        return {
+          orderId: invoice.order._id,
+          orderNumber: invoice.order.orderNumber,
+          customerId: invoice.order.customer?._id,
+          customerName,
+          dueAmount: invoice.balanceAmount,
+          dueDate: invoice.dueDate,
+        };
+      });
 
     const overdueAmount = filteredOverdueInvoices.reduce((sum, inv) => sum + (inv.balanceAmount || 0), 0);
 
@@ -168,7 +190,7 @@ export async function GET(request) {
         orderNumber: order.orderNumber,
         customer: {
           _id: order.customer?._id,
-          name: order.customer?.name || 'Unknown',
+          name: getCustomerName(order),
         },
         finalAmount: order.finalAmount,
         status: order.status,
@@ -179,7 +201,7 @@ export async function GET(request) {
         orderNumber: order.orderNumber,
         customer: {
           _id: order.customer?._id,
-          name: order.customer?.name || 'Unknown',
+          name: getCustomerName(order),
         },
         finalAmount: order.finalAmount,
         status: order.status,
@@ -196,7 +218,7 @@ export async function GET(request) {
         orderNumber: order.orderNumber,
         customer: {
           _id: order.customer?._id,
-          name: order.customer?.name || 'Unknown',
+          name: getCustomerName(order),
         },
         finalAmount: order.finalAmount,
         updatedAt: order.updatedAt,
