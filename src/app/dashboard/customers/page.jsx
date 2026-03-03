@@ -325,12 +325,16 @@ export default function CustomersPage() {
                     }
                     placeholder="00XXXXXXXX"
                     required
-                    disabled={!!editingCustomer}
                     maxLength={10}
                   />
                   {!editingCustomer && (
                     <p className="text-xs text-muted-foreground">
                       Auto-generated unique fake number (starts with 00)
+                    </p>
+                  )}
+                  {editingCustomer && (
+                    <p className="text-xs text-muted-foreground">
+                      You can update the phone number if needed
                     </p>
                   )}
                 </div>

@@ -84,9 +84,9 @@ const VehicleSchema = new mongoose.Schema(
   }
 );
 
-// Index for geospatial queries - only if location exists
+// Indexes for performance optimization
+// Note: vehicleNumber already has unique index from schema definition
 VehicleSchema.index({ currentLocation: '2dsphere' }, { sparse: true });
-VehicleSchema.index({ vehicleNumber: 1 });
 VehicleSchema.index({ status: 1 });
 VehicleSchema.index({ driver: 1 });
 

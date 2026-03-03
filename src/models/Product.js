@@ -76,7 +76,7 @@ const ProductSchema = new mongoose.Schema(
 );
 
 // Indexes for performance optimization
-ProductSchema.index({ sku: 1 }, { unique: true });
+// Note: sku already has unique index from schema definition
 ProductSchema.index({ barcode: 1 }, { sparse: true });
 ProductSchema.index({ category: 1, isActive: 1 });
 ProductSchema.index({ isActive: 1, stock: 1 });

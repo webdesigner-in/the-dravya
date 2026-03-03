@@ -149,7 +149,7 @@ InvoiceSchema.pre('save', function () {
 });
 
 // Indexes for performance optimization
-InvoiceSchema.index({ invoiceNumber: 1 });
+// Note: invoiceNumber already has unique index from schema definition
 InvoiceSchema.index({ order: 1 }, { unique: true });
 InvoiceSchema.index({ customer: 1, issueDate: -1 });
 InvoiceSchema.index({ status: 1, dueDate: 1 });

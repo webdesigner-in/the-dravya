@@ -182,6 +182,26 @@ export default function OrdersPage() {
     return () => clearTimeout(timer);
   }, [customerSearchQuery]);
 
+  // Close customer dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      const dropdown = document.getElementById('customer-dropdown');
+      const searchInput = event.target.closest('input[placeholder*="Search and select customer"]');
+      
+      if (dropdown && !dropdown.contains(event.target) && !searchInput) {
+        dropdown.classList.add('hidden');
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
+
   const fetchOrders = async () => {
     try {
       setIsLoading(true);
@@ -788,43 +808,80 @@ export default function OrdersPage() {
                 {formData.orderType === "customer" && (
                   <div className="space-y-2">
                     <Label htmlFor="customer" className="text-sm">Customer *</Label>
-                    <Select
-                      value={formData.customer}
-                      onValueChange={(value) =>
-                        setFormData({ ...formData, customer: value })
-                      }
-                      required
-                    >
-                      <SelectTrigger className="h-10 text-sm">
-                        <SelectValue placeholder="Select customer" />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-[300px]">
-                        <div className="sticky top-0 bg-white p-2 border-b z-10">
-                          <div className="relative">
-                            <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                            <Input
-                              placeholder="Search customers..."
-                              value={customerSearchQuery}
-                              onChange={(e) => setCustomerSearchQuery(e.target.value)}
-                              className="pl-8 h-9 text-sm"
-                              onClick={(e) => e.stopPropagation()}
-                              onKeyDown={(e) => e.stopPropagation()}
-                            />
-                          </div>
+                    
+                    {/* Mobile-friendly searchable customer selector */}
+                    <div className="relative">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none z-10" />
+                        <Input
+                          placeholder="Search and select customer..."
+                          value={customerSearchQuery}
+                          onChange={(e) => {
+                            setCustomerSearchQuery(e.target.value);
+                          }}
+                          onFocus={() => {
+                            // Show dropdown when focused
+                            const dropdown = document.getElementById('customer-dropdown');
+                            if (dropdown) dropdown.classList.remove('hidden');
+                          }}
+                          className="pl-10 h-10 text-sm"
+                          autoComplete="off"
+                          type="text"
+                          required={!formData.customer}
+                        />
+                      </div>
+                      
+                      {/* Selected customer display */}
+                      {formData.customer && (
+                        <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md flex items-center justify-between">
+                          <span className="text-sm text-blue-900">
+                            {customers.find(c => c._id === formData.customer)?.name || 'Selected customer'}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setFormData({ ...formData, customer: "" });
+                              setCustomerSearchQuery("");
+                            }}
+                            className="h-6 px-2"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
                         </div>
-                        {customers.length > 0 ? (
-                          customers.map((customer) => (
-                            <SelectItem key={customer._id} value={customer._id}>
-                              {customer.name} - {customer.phone}
-                            </SelectItem>
-                          ))
-                        ) : (
-                          <div className="p-4 text-center text-sm text-gray-500">
-                            {customerSearchQuery ? "No customers found" : "Loading customers..."}
-                          </div>
-                        )}
-                      </SelectContent>
-                    </Select>
+                      )}
+                      
+                      {/* Dropdown list */}
+                      {customerSearchQuery && (
+                        <div 
+                          id="customer-dropdown"
+                          className="absolute z-50 w-full mt-1 bg-white border rounded-md shadow-lg max-h-[300px] overflow-y-auto"
+                        >
+                          {customers.length > 0 ? (
+                            customers.map((customer) => (
+                              <button
+                                key={customer._id}
+                                type="button"
+                                onClick={() => {
+                                  setFormData({ ...formData, customer: customer._id });
+                                  setCustomerSearchQuery("");
+                                  document.getElementById('customer-dropdown')?.classList.add('hidden');
+                                }}
+                                className="w-full text-left px-4 py-3 hover:bg-gray-100 border-b last:border-b-0 text-sm"
+                              >
+                                <div className="font-medium">{customer.name}</div>
+                                <div className="text-xs text-gray-500">{customer.phone}</div>
+                              </button>
+                            ))
+                          ) : (
+                            <div className="p-4 text-center text-sm text-gray-500">
+                              {customerSearchQuery ? "No customers found" : "Start typing to search..."}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 

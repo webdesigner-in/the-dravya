@@ -88,9 +88,9 @@ const WarehouseSchema = new mongoose.Schema(
   }
 );
 
-// Index for geospatial queries - only if location exists
+// Indexes for performance optimization
+// Note: code already has unique index from schema definition
 WarehouseSchema.index({ location: '2dsphere' }, { sparse: true });
-WarehouseSchema.index({ code: 1 });
 WarehouseSchema.index({ type: 1 });
 WarehouseSchema.index({ isActive: 1 });
 

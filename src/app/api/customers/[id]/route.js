@@ -68,6 +68,30 @@ export async function PUT(request, { params }) {
     const { id } = await params;
     const body = await request.json();
 
+    // Get the existing customer
+    const existingCustomer = await Customer.findById(id);
+    if (!existingCustomer) {
+      return NextResponse.json(
+        { error: 'Customer not found' },
+        { status: 404 }
+      );
+    }
+
+    // If phone number is being changed, check if the new phone already exists
+    if (body.phone && body.phone !== existingCustomer.phone) {
+      const phoneExists = await Customer.findOne({ 
+        phone: body.phone,
+        _id: { $ne: id } // Exclude current customer
+      });
+      
+      if (phoneExists) {
+        return NextResponse.json(
+          { error: 'A customer with this phone number already exists' },
+          { status: 409 }
+        );
+      }
+    }
+
     const customer = await Customer.findByIdAndUpdate(
       id,
       { $set: body },
@@ -86,7 +110,6 @@ export async function PUT(request, { params }) {
       customer,
     });
   } catch (error) {
-    console.error('Update customer error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }

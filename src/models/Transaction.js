@@ -84,7 +84,7 @@ const TransactionSchema = new mongoose.Schema(
 );
 
 // Indexes for performance optimization
-TransactionSchema.index({ transactionNumber: 1 });
+// Note: transactionNumber already has unique index from schema definition
 TransactionSchema.index({ type: 1, date: -1 });
 TransactionSchema.index({ category: 1, date: -1 });
 TransactionSchema.index({ customer: 1, date: -1 });
