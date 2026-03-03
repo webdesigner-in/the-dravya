@@ -5,8 +5,9 @@ import { getAuthUser } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
 
 export async function GET(request, { params }) {
+  let authUser;
   try {
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser || authUser.role !== 'admin') {
       return NextResponse.json(
@@ -48,8 +49,9 @@ export async function GET(request, { params }) {
 }
 
 export async function PUT(request, { params }) {
+  let authUser;
   try {
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser || authUser.role !== 'admin') {
       return NextResponse.json(
@@ -135,8 +137,9 @@ export async function PUT(request, { params }) {
 }
 
 export async function DELETE(request, { params }) {
+  let authUser;
   try {
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser || authUser.role !== 'admin') {
       return NextResponse.json(

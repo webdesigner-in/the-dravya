@@ -8,8 +8,9 @@ import { generateInvoiceNumber, generateTransactionNumber } from '@/lib/numberGe
 
 // POST create invoice from order
 export async function POST(request, { params }) {
+  let authUser;
   try {
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser) {
       return NextResponse.json(

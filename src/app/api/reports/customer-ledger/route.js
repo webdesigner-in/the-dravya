@@ -6,8 +6,9 @@ import { getAuthUser } from '@/lib/auth';
 
 // GET customer ledger report
 export async function GET(request) {
+  let authUser;
   try {
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser) {
       return NextResponse.json(
@@ -33,20 +34,31 @@ export async function GET(request) {
     let totalDue = 0;
 
     for (const customer of customers) {
-      // Get orders for this customer - admin sees all, others see only their own
-      const orderFilter = { customer: customer._id };
+      // Get ALL orders for this customer - admin sees all, others see only their own
+      const orderFilter = { 
+        customer: customer._id
+      };
       if (!isAdmin) {
         orderFilter.createdBy = authUser.userId;
       }
       
-      const orders = await Order.find(orderFilter);
+      const allOrders = await Order.find(orderFilter);
 
-      if (orders.length === 0) continue; // Skip customers with no orders
+      if (allOrders.length === 0) continue; // Skip customers with no orders
 
-      // Calculate totals
-      const customerTotal = orders.reduce((sum, order) => sum + (order.finalAmount || 0), 0);
-      const customerPaid = orders.reduce((sum, order) => sum + (order.paidAmount || 0), 0);
-      const customerDue = customerTotal - customerPaid;
+      // Calculate totals from ALL orders
+      const customerTotal = allOrders.reduce((sum, order) => sum + (order.finalAmount || 0), 0);
+      const customerPaid = allOrders.reduce((sum, order) => sum + (order.paidAmount || 0), 0);
+      
+      // Calculate due amount only from DELIVERED orders with unpaid/partial status
+      const deliveredUnpaidOrders = allOrders.filter(order => 
+        order.status === 'delivered' && 
+        (order.paymentStatus === 'unpaid' || order.paymentStatus === 'partial')
+      );
+      
+      const deliveredTotal = deliveredUnpaidOrders.reduce((sum, order) => sum + (order.finalAmount || 0), 0);
+      const deliveredPaid = deliveredUnpaidOrders.reduce((sum, order) => sum + (order.paidAmount || 0), 0);
+      const customerDue = deliveredTotal - deliveredPaid;
 
       ledger.push({
         customer: {
@@ -55,10 +67,11 @@ export async function GET(request) {
           phone: customer.phone,
           email: customer.email,
         },
-        totalOrders: orders.length,
+        totalOrders: allOrders.length,
+        deliveredUnpaidOrders: deliveredUnpaidOrders.length,
         totalAmount: customerTotal,
         paidAmount: customerPaid,
-        dueAmount: customerDue,
+        dueAmount: customerDue, // Only from delivered unpaid orders
       });
 
       totalRevenue += customerTotal;

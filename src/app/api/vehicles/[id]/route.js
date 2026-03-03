@@ -6,8 +6,9 @@ import { getAuthUser } from '@/lib/auth';
 
 // PUT update vehicle
 export async function PUT(request, { params }) {
+  let authUser;
   try {
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser || authUser.role !== 'admin') {
       return NextResponse.json(
@@ -53,8 +54,9 @@ export async function PUT(request, { params }) {
 
 // DELETE vehicle
 export async function DELETE(request, { params }) {
+  let authUser;
   try {
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser || authUser.role !== 'admin') {
       return NextResponse.json(

@@ -6,8 +6,9 @@ import { getAuthUser } from '@/lib/auth';
 
 // POST reset all payments on invoice
 export async function POST(request, { params }) {
+  let authUser;
   try {
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser) {
       return NextResponse.json(

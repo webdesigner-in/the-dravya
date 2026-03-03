@@ -5,8 +5,9 @@ import { getAuthUser } from '@/lib/auth';
 
 // Migration endpoint to add bottlesPerCarton to existing products
 export async function POST(request) {
+  let authUser;
   try {
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser || authUser.role !== 'admin') {
       return NextResponse.json(

@@ -5,8 +5,9 @@ import { getAuthUser } from '@/lib/auth';
 
 // GET all products
 export async function GET(request) {
+  let authUser;
   try {
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser) {
       return NextResponse.json(
@@ -41,8 +42,9 @@ export async function GET(request) {
 
 // POST create new product
 export async function POST(request) {
+  let authUser;
   try {
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser || authUser.role !== 'admin') {
       return NextResponse.json(

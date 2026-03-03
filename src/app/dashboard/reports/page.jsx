@@ -218,7 +218,8 @@ export default function ReportsPage() {
                 <thead className="border-b">
                   <tr className="text-left">
                     <th className="pb-3 px-2 text-sm font-medium">Customer</th>
-                    <th className="pb-3 px-2 text-sm font-medium text-center">Orders</th>
+                    <th className="pb-3 px-2 text-sm font-medium text-center">Total Orders</th>
+                    <th className="pb-3 px-2 text-sm font-medium text-center">Due Orders</th>
                     <th className="pb-3 px-2 text-sm font-medium text-right">Total Amount</th>
                     <th className="pb-3 px-2 text-sm font-medium text-right">Paid</th>
                     <th className="pb-3 px-2 text-sm font-medium text-right">Due</th>
@@ -236,6 +237,7 @@ export default function ReportsPage() {
                         </div>
                       </td>
                       <td className="py-3 px-2 text-center text-sm">{ledger.totalOrders}</td>
+                      <td className="py-3 px-2 text-center text-sm text-orange-600">{ledger.deliveredUnpaidOrders || 0}</td>
                       <td className="py-3 px-2 text-right text-sm">₹{ledger.totalAmount.toFixed(2)}</td>
                       <td className="py-3 px-2 text-right text-sm text-green-600">₹{ledger.paidAmount.toFixed(2)}</td>
                       <td className="py-3 px-2 text-right text-sm text-red-600 font-medium">

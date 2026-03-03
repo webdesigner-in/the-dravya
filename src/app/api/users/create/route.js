@@ -4,8 +4,9 @@ import User from '@/models/User';
 import { getAuthUser } from '@/lib/auth';
 
 export async function POST(request) {
+  let authUser;
   try {
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     // Only admins can create users
     if (!authUser || authUser.role !== 'admin') {

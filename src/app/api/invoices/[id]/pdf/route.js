@@ -8,8 +8,9 @@ import { getAuthUser } from '@/lib/auth';
 
 // GET generate PDF
 export async function GET(request, { params }) {
+  let authUser;
   try {
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser) {
       return NextResponse.json(

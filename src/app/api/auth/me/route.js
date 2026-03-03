@@ -4,8 +4,9 @@ import User from '@/models/User';
 import { getAuthUser } from '@/lib/auth';
 
 export async function GET() {
+  let authUser;
   try {
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser) {
       return NextResponse.json(

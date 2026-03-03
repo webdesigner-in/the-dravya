@@ -5,9 +5,10 @@ import { getAuthUser } from '@/lib/auth';
 
 // GET single transaction
 export async function GET(request, { params }) {
+  let authUser;
   try {
     const { id } = await params;
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser) {
       return NextResponse.json(
@@ -52,9 +53,10 @@ export async function GET(request, { params }) {
 
 // PUT update transaction
 export async function PUT(request, { params }) {
+  let authUser;
   try {
     const { id } = await params;
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser) {
       return NextResponse.json(
@@ -146,9 +148,10 @@ export async function PUT(request, { params }) {
 
 // DELETE transaction
 export async function DELETE(request, { params }) {
+  let authUser;
   try {
     const { id } = await params;
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser) {
       return NextResponse.json(

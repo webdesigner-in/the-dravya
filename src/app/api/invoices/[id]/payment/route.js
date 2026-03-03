@@ -8,8 +8,9 @@ import { generateTransactionNumber } from '@/lib/numberGenerator';
 
 // POST record payment on invoice
 export async function POST(request, { params }) {
+  let authUser;
   try {
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser) {
       return NextResponse.json(

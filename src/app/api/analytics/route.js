@@ -8,8 +8,9 @@ import { getAuthUser } from '@/lib/auth';
 
 // GET analytics data
 export async function GET(request) {
+  let authUser;
   try {
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser) {
       return NextResponse.json(

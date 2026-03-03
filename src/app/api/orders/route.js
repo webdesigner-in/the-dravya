@@ -14,8 +14,9 @@ const logger = createLogger('OrdersAPI');
 
 // GET all orders
 export async function GET(request) {
+  let authUser;
   try {
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser) {
       return NextResponse.json(
@@ -55,6 +56,7 @@ export async function GET(request) {
     }
 
     // Search filter - search in order number, guest info, and customer names
+    let searchConditions = [];
     if (search) {
       const searchRegex = new RegExp(search, 'i');
       
@@ -68,8 +70,8 @@ export async function GET(request) {
       
       const customerIds = matchingCustomers.map(c => c._id);
       
-      // Build search filter for orders
-      filter.$or = [
+      // Build search conditions
+      searchConditions = [
         { orderNumber: searchRegex },
         { 'guestInfo.name': searchRegex },
         { 'guestInfo.phone': searchRegex }
@@ -77,25 +79,24 @@ export async function GET(request) {
       
       // Add customer IDs to search if any found
       if (customerIds.length > 0) {
-        filter.$or.push({ customer: { $in: customerIds } });
+        searchConditions.push({ customer: { $in: customerIds } });
       }
     }
 
+    // Date filter conditions
+    let dateConditions = [];
+    
     // Month filter (specific month in YYYY-MM format) - use deliveryDate or createdAt
     if (monthFilter && monthFilter !== 'all') {
       const [year, month] = monthFilter.split('-');
       const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
       const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59, 999);
       
-      // Match orders where deliveryDate OR createdAt is in the selected month
-      if (!filter.$or) {
-        filter.$or = [];
-      }
-      filter.$or.push(
+      dateConditions = [
         { deliveryDate: { $gte: startDate, $lte: endDate } },
         { deliveryDate: { $exists: false }, createdAt: { $gte: startDate, $lte: endDate } },
         { deliveryDate: null, createdAt: { $gte: startDate, $lte: endDate } }
-      );
+      ];
     }
     // Date filters (only apply if month filter is not set) - use deliveryDate or createdAt
     else if (dateFilter && dateFilter !== 'all') {
@@ -115,16 +116,27 @@ export async function GET(request) {
       }
 
       if (startDate) {
-        // Match orders where deliveryDate OR createdAt is after startDate
-        if (!filter.$or) {
-          filter.$or = [];
-        }
-        filter.$or.push(
+        dateConditions = [
           { deliveryDate: { $gte: startDate } },
           { deliveryDate: { $exists: false }, createdAt: { $gte: startDate } },
           { deliveryDate: null, createdAt: { $gte: startDate } }
-        );
+        ];
       }
+    }
+
+    // Combine search and date conditions properly
+    if (searchConditions.length > 0 && dateConditions.length > 0) {
+      // Both search and date filters - use $and with nested $or
+      filter.$and = [
+        { $or: searchConditions },
+        { $or: dateConditions }
+      ];
+    } else if (searchConditions.length > 0) {
+      // Only search filter
+      filter.$or = searchConditions;
+    } else if (dateConditions.length > 0) {
+      // Only date filter
+      filter.$or = dateConditions;
     }
 
     // Determine sort order
@@ -180,15 +192,24 @@ export async function GET(request) {
       },
     });
   } catch (error) {
-    logger.error('Get orders error', error, { userId: authUser?.userId });
-    return errorResponse(error, 'Failed to fetch orders');
+    logger.error('Get orders error', error);
+    
+    // Return more specific error message
+    return NextResponse.json(
+      { 
+        error: 'Failed to fetch orders',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      },
+      { status: 500 }
+    );
   }
 }
 
 // POST create new order
 export async function POST(request) {
+  let authUser;
   try {
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser) {
       return NextResponse.json(
@@ -356,8 +377,14 @@ export async function POST(request) {
       { status: 201 }
     );
   } catch (error) {
+    logger.error('Create order error', error);
+    
+    // Return more specific error message
     return NextResponse.json(
-      { error: 'Something went wrong' },
+      { 
+        error: error.message || 'Failed to create order',
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      },
       { status: 500 }
     );
   }

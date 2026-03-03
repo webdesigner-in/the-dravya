@@ -7,8 +7,9 @@ import { getAuthUser } from '@/lib/auth';
 
 // GET single invoice
 export async function GET(request, { params }) {
+  let authUser;
   try {
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser) {
       return NextResponse.json(
@@ -49,8 +50,9 @@ export async function GET(request, { params }) {
 
 // PUT update invoice (admin only)
 export async function PUT(request, { params }) {
+  let authUser;
   try {
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser) {
       return NextResponse.json(
@@ -147,8 +149,9 @@ export async function PUT(request, { params }) {
 
 // DELETE invoice (admin only)
 export async function DELETE(request, { params }) {
+  let authUser;
   try {
-    const authUser = await getAuthUser();
+    authUser = await getAuthUser();
 
     if (!authUser) {
       return NextResponse.json(
