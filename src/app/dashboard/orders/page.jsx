@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { Button } from "@/components/ui/button";
@@ -149,60 +149,8 @@ export default function OrdersPage() {
     terms: "",
   });
 
-  // Update invoice data when selected order changes
-  useEffect(() => {
-    if (selectedOrder && isInvoiceDialogOpen) {
-      setInvoiceData({
-        dueDate: "",
-        paymentTerms: selectedOrder.paymentStatus === "paid" ? "Paid in full" : "Due on receipt",
-        paymentStatus: selectedOrder.paymentStatus || "unpaid",
-        paidAmount: selectedOrder.paidAmount?.toString() || "0",
-        notes: selectedOrder.notes || "",
-        terms: "",
-      });
-    }
-  }, [selectedOrder, isInvoiceDialogOpen]);
-
-  useEffect(() => {
-    fetchOrders();
-    fetchCustomers();
-    fetchProducts();
-  }, [statusFilter, paymentFilter, dateFilter, customerIdFromUrl, currentPage, searchQuery, sortBy]);
-
-  // Debounce customer search
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (customerSearchQuery) {
-        fetchCustomers(customerSearchQuery);
-      } else {
-        fetchCustomers(); // Load all when search is empty
-      }
-    }, 300); // 300ms delay
-
-    return () => clearTimeout(timer);
-  }, [customerSearchQuery]);
-
-  // Close customer dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      const dropdown = document.getElementById('customer-dropdown');
-      const searchInput = event.target.closest('input[placeholder*="Search and select customer"]');
-      
-      if (dropdown && !dropdown.contains(event.target) && !searchInput) {
-        dropdown.classList.add('hidden');
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('touchstart', handleClickOutside);
-    
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('touchstart', handleClickOutside);
-    };
-  }, []);
-
-  const fetchOrders = async () => {
+  // Memoized fetch functions to prevent infinite loops
+  const fetchOrders = useCallback(async () => {
     try {
       setIsLoading(true);
       let url = "/api/orders?";
@@ -210,7 +158,7 @@ export default function OrdersPage() {
       if (paymentFilter !== "all") url += `paymentStatus=${paymentFilter}&`;
       if (dateFilter !== "all") url += `date=${dateFilter}&`;
       if (customerIdFromUrl) url += `customer=${customerIdFromUrl}&`;
-      if (searchQuery) url += `search=${searchQuery}&`;
+      if (searchQuery) url += `search=${encodeURIComponent(searchQuery)}&`;
       if (sortBy) url += `sortBy=${sortBy}&`;
       url += `page=${currentPage}&limit=20`;
 
@@ -226,15 +174,17 @@ export default function OrdersPage() {
         
         // Orders now come with invoice populated from the API
         setOrders(ordersData);
+      } else {
+        toast.error("Failed to fetch orders");
       }
     } catch (error) {
       toast.error("Failed to fetch orders");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [statusFilter, paymentFilter, dateFilter, customerIdFromUrl, searchQuery, sortBy, currentPage]);
 
-  const fetchCustomers = async (searchTerm = "") => {
+  const fetchCustomers = useCallback(async (searchTerm = "") => {
     try {
       let url = "/api/customers?limit=100"; // Load more customers for dropdown
       if (searchTerm) {
@@ -257,9 +207,9 @@ export default function OrdersPage() {
     } catch (error) {
       // Error already logged
     }
-  };
+  }, [customerIdFromUrl]);
 
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
     try {
       const response = await fetch("/api/products");
       if (response.ok) {
@@ -269,7 +219,65 @@ export default function OrdersPage() {
     } catch (error) {
       // Error already logged
     }
-  };
+  }, []);
+
+  // Update invoice data when selected order changes
+  useEffect(() => {
+    if (selectedOrder && isInvoiceDialogOpen) {
+      setInvoiceData({
+        dueDate: "",
+        paymentTerms: selectedOrder.paymentStatus === "paid" ? "Paid in full" : "Due on receipt",
+        paymentStatus: selectedOrder.paymentStatus || "unpaid",
+        paidAmount: selectedOrder.paidAmount?.toString() || "0",
+        notes: selectedOrder.notes || "",
+        terms: "",
+      });
+    }
+  }, [selectedOrder, isInvoiceDialogOpen]);
+
+  // Fetch orders when dependencies change
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
+
+  // Fetch customers and products on mount
+  useEffect(() => {
+    fetchCustomers();
+    fetchProducts();
+  }, [fetchCustomers, fetchProducts]);
+
+  // Debounce customer search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (customerSearchQuery) {
+        fetchCustomers(customerSearchQuery);
+      } else {
+        fetchCustomers(); // Load all when search is empty
+      }
+    }, 300); // 300ms delay
+
+    return () => clearTimeout(timer);
+  }, [customerSearchQuery, fetchCustomers]);
+
+  // Close customer dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      const dropdown = document.getElementById('customer-dropdown');
+      const searchInput = event.target.closest('input[placeholder*="Search and select customer"]');
+      
+      if (dropdown && !dropdown.contains(event.target) && !searchInput) {
+        dropdown.classList.add('hidden');
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
 
   const handleSearch = () => {
     fetchOrders();
