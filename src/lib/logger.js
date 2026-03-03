@@ -22,10 +22,11 @@ class Logger {
   }
 
   info(message, data) {
+    // Only log in development
     if (isDevelopment) {
       console.log(this.formatMessage('INFO', message, data), data || '');
     }
-    // In production, send to logging service
+    // In production, send to logging service if needed
   }
 
   warn(message, data) {

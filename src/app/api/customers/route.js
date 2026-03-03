@@ -59,7 +59,7 @@ export async function GET(request) {
       Customer.countDocuments(filter)
     ]);
 
-    logger.info(`Fetched ${customers.length} customers`, { userId: authUser.userId, page, limit });
+    // logger.info(`Fetched ${customers.length} customers`, { userId: authUser.userId, page, limit });
 
     const response = buildPaginationResponse(customers, totalCustomers, page, limit);
     
@@ -146,7 +146,7 @@ export async function POST(request) {
       .populate('assignedDistributor', 'name email')
       .lean();
 
-    logger.info('Customer created', { customerId: customer._id, userId: authUser.userId });
+    // logger.info('Customer created', { customerId: customer._id, userId: authUser.userId });
 
     return NextResponse.json({
       success: true,

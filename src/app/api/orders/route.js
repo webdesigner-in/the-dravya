@@ -54,14 +54,31 @@ export async function GET(request) {
       filter.paymentStatus = paymentStatus;
     }
 
-    // Search filter - use database query instead of in-memory filtering
+    // Search filter - search in order number, guest info, and customer names
     if (search) {
       const searchRegex = new RegExp(search, 'i');
+      
+      // First, find customers matching the search
+      const matchingCustomers = await Customer.find({
+        $or: [
+          { name: searchRegex },
+          { phone: searchRegex }
+        ]
+      }).select('_id').lean();
+      
+      const customerIds = matchingCustomers.map(c => c._id);
+      
+      // Build search filter for orders
       filter.$or = [
         { orderNumber: searchRegex },
         { 'guestInfo.name': searchRegex },
         { 'guestInfo.phone': searchRegex }
       ];
+      
+      // Add customer IDs to search if any found
+      if (customerIds.length > 0) {
+        filter.$or.push({ customer: { $in: customerIds } });
+      }
     }
 
     // Month filter (specific month in YYYY-MM format) - use deliveryDate or createdAt
@@ -143,7 +160,7 @@ export async function GET(request) {
 
     const totalPages = Math.ceil(totalOrders / limit);
 
-    logger.info(`Fetched ${orders.length} orders`, { userId: authUser.userId, page, limit, totalOrders });
+    // logger.info(`Fetched ${orders.length} orders`, { userId: authUser.userId, page, limit, totalOrders });
 
     return NextResponse.json({
       success: true,
