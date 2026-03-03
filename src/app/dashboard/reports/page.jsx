@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -9,14 +9,23 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   FileText,
   Search,
   TrendingUp,
   TrendingDown,
-  DollarSign,
+  IndianRupee,
   Users,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -29,6 +38,9 @@ export default function ReportsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [expandedCustomer, setExpandedCustomer] = useState(null);
+  const [customerOrders, setCustomerOrders] = useState([]);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
   const [summary, setSummary] = useState({
     totalRevenue: 0,
     totalPaid: 0,
@@ -98,6 +110,41 @@ export default function ReportsPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    const day = date.getDate();
+    const month = date.toLocaleDateString('en-US', { month: 'short' });
+    const year = date.getFullYear();
+    return `${day}-${month}-${year}`;
+  };
+
+  const fetchCustomerOrders = async (customerId) => {
+    try {
+      setIsLoadingOrders(true);
+      const response = await fetch(`/api/orders?customer=${customerId}`);
+      if (response.ok) {
+        const data = await response.json();
+        setCustomerOrders(data.orders || []);
+      } else {
+        toast.error("Failed to fetch customer orders");
+      }
+    } catch (error) {
+      toast.error("Failed to fetch customer orders");
+    } finally {
+      setIsLoadingOrders(false);
+    }
+  };
+
+  const handleToggleExpand = async (customerId) => {
+    if (expandedCustomer === customerId) {
+      setExpandedCustomer(null);
+      setCustomerOrders([]);
+    } else {
+      setExpandedCustomer(customerId);
+      await fetchCustomerOrders(customerId);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -122,7 +169,7 @@ export default function ReportsPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-              <DollarSign className="h-4 w-4 text-muted-foreground" />
+              <IndianRupee className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">₹{summary.totalRevenue.toFixed(2)}</div>
@@ -229,43 +276,143 @@ export default function ReportsPage() {
                 </thead>
                 <tbody className="divide-y">
                   {filteredLedger.map((ledger) => (
-                    <tr key={ledger.customer._id} className="hover:bg-muted/50">
-                      <td className="py-3 px-2">
-                        <div>
-                          <p className="font-medium text-sm">{ledger.customer.name}</p>
-                          <p className="text-xs text-muted-foreground">{ledger.customer.phone}</p>
-                        </div>
-                      </td>
-                      <td className="py-3 px-2 text-center text-sm">{ledger.totalOrders}</td>
-                      <td className="py-3 px-2 text-center text-sm text-orange-600">{ledger.deliveredUnpaidOrders || 0}</td>
-                      <td className="py-3 px-2 text-right text-sm">₹{ledger.totalAmount.toFixed(2)}</td>
-                      <td className="py-3 px-2 text-right text-sm text-green-600">₹{ledger.paidAmount.toFixed(2)}</td>
-                      <td className="py-3 px-2 text-right text-sm text-red-600 font-medium">
-                        ₹{ledger.dueAmount.toFixed(2)}
-                      </td>
-                      <td className="py-3 px-2 text-center">
-                        {ledger.dueAmount === 0 ? (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            Paid
-                          </span>
-                        ) : ledger.paidAmount === 0 ? (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                            Unpaid
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                            Partial
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-2 text-center">
-                        <Link href={`/dashboard/orders?customer=${ledger.customer._id}`}>
-                          <Button variant="outline" size="sm">
-                            View Orders
+                    <React.Fragment key={ledger.customer._id}>
+                      <tr className="hover:bg-muted/50">
+                        <td className="py-3 px-2">
+                          <div>
+                            <p className="font-medium text-sm">{ledger.customer.name}</p>
+                            <p className="text-xs text-muted-foreground">{ledger.customer.phone}</p>
+                          </div>
+                        </td>
+                        <td className="py-3 px-2 text-center text-sm">{ledger.totalOrders}</td>
+                        <td className="py-3 px-2 text-center text-sm text-orange-600">{ledger.deliveredUnpaidOrders || 0}</td>
+                        <td className="py-3 px-2 text-right text-sm">₹{ledger.totalAmount.toFixed(2)}</td>
+                        <td className="py-3 px-2 text-right text-sm text-green-600">₹{ledger.paidAmount.toFixed(2)}</td>
+                        <td className="py-3 px-2 text-right text-sm text-red-600 font-medium">
+                          ₹{ledger.dueAmount.toFixed(2)}
+                        </td>
+                        <td className="py-3 px-2 text-center">
+                          {ledger.dueAmount === 0 ? (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              Paid
+                            </span>
+                          ) : ledger.paidAmount === 0 ? (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                              Unpaid
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                              Partial
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 px-2 text-center">
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => handleToggleExpand(ledger.customer._id)}
+                          >
+                            {expandedCustomer === ledger.customer._id ? (
+                              <>
+                                <ChevronUp className="h-4 w-4 mr-1" />
+                                Hide Orders
+                              </>
+                            ) : (
+                              <>
+                                <ChevronDown className="h-4 w-4 mr-1" />
+                                View Orders
+                              </>
+                            )}
                           </Button>
-                        </Link>
-                      </td>
-                    </tr>
+                        </td>
+                      </tr>
+                      {expandedCustomer === ledger.customer._id && (
+                        <tr>
+                          <td colSpan="8" className="p-0">
+                            <div className="bg-muted/30 p-4">
+                              {isLoadingOrders ? (
+                                <div className="flex justify-center py-4">
+                                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+                                </div>
+                              ) : customerOrders.length === 0 ? (
+                                <p className="text-center text-sm text-muted-foreground py-4">No orders found</p>
+                              ) : (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-sm">
+                                    <thead className="bg-muted">
+                                      <tr>
+                                        <th className="text-left p-2 font-medium">Order #</th>
+                                        <th className="text-left p-2 font-medium">Date</th>
+                                        <th className="text-center p-2 font-medium">Items</th>
+                                        <th className="text-center p-2 font-medium">Status</th>
+                                        <th className="text-center p-2 font-medium">Payment</th>
+                                        <th className="text-right p-2 font-medium">Total</th>
+                                        <th className="text-right p-2 font-medium">Paid</th>
+                                        <th className="text-right p-2 font-medium">Due</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y">
+                                      {customerOrders.map((order) => (
+                                        <tr key={order._id} className="hover:bg-muted/50">
+                                          <td className="p-2">
+                                            <Link 
+                                              href={`/dashboard/orders?customer=${ledger.customer._id}`}
+                                              className="text-blue-600 hover:underline font-mono text-xs"
+                                            >
+                                              {order.orderNumber}
+                                            </Link>
+                                          </td>
+                                          <td className="p-2 text-xs">
+                                            {formatDate(order.deliveryDate || order.createdAt)}
+                                          </td>
+                                          <td className="p-2 text-center">{order.items?.length || 0}</td>
+                                          <td className="p-2 text-center">
+                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs capitalize ${
+                                              order.status === 'delivered' ? 'bg-green-100 text-green-800' :
+                                              order.status === 'cancelled' ? 'bg-red-100 text-red-800' :
+                                              order.status === 'out-for-delivery' ? 'bg-orange-100 text-orange-800' :
+                                              'bg-blue-100 text-blue-800'
+                                            }`}>
+                                              {order.status}
+                                            </span>
+                                          </td>
+                                          <td className="p-2 text-center">
+                                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs capitalize ${
+                                              order.paymentStatus === 'paid' ? 'bg-green-100 text-green-800' :
+                                              order.paymentStatus === 'partial' ? 'bg-yellow-100 text-yellow-800' :
+                                              'bg-red-100 text-red-800'
+                                            }`}>
+                                              {order.paymentStatus}
+                                            </span>
+                                          </td>
+                                          <td className="p-2 text-right font-medium">
+                                            ₹{parseFloat(order.finalAmount || 0).toFixed(2)}
+                                          </td>
+                                          <td className="p-2 text-right text-green-600">
+                                            ₹{parseFloat(order.paidAmount || 0).toFixed(2)}
+                                          </td>
+                                          <td className="p-2 text-right text-red-600 font-medium">
+                                            ₹{(parseFloat(order.finalAmount || 0) - parseFloat(order.paidAmount || 0)).toFixed(2)}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                    <tfoot className="bg-muted font-semibold">
+                                      <tr>
+                                        <td colSpan="5" className="p-2 text-right">Totals:</td>
+                                        <td className="p-2 text-right">₹{ledger.totalAmount.toFixed(2)}</td>
+                                        <td className="p-2 text-right text-green-600">₹{ledger.paidAmount.toFixed(2)}</td>
+                                        <td className="p-2 text-right text-red-600">₹{ledger.dueAmount.toFixed(2)}</td>
+                                      </tr>
+                                    </tfoot>
+                                  </table>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { toast } from "sonner";
@@ -8,9 +8,11 @@ import { toast } from "sonner";
 export default function RoutesPage() {
   const router = useRouter();
   const isAdmin = useAuthStore((state) => state.isAdmin());
+  const hasShownAccessDenied = useRef(false);
 
   useEffect(() => {
-    if (!isAdmin) {
+    if (!isAdmin && !hasShownAccessDenied.current) {
+      hasShownAccessDenied.current = true;
       router.push("/dashboard");
       toast.error("Access denied. Routes management is only accessible to administrators.");
     }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,7 @@ export default function StockPage() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
   const isAdmin = useAuthStore((state) => state.isAdmin());
+  const hasShownAccessDenied = useRef(false);
   const [products, setProducts] = useState([]);
   const [movements, setMovements] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -86,7 +87,8 @@ export default function StockPage() {
   };
 
   useEffect(() => {
-    if (!isAdmin) {
+    if (!isAdmin && !hasShownAccessDenied.current) {
+      hasShownAccessDenied.current = true;
       router.push("/dashboard");
       toast.error("Access denied. Stock management is only accessible to administrators.");
     }

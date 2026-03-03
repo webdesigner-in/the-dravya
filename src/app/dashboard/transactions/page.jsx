@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,7 +43,7 @@ import {
   Plus,
   TrendingUp,
   TrendingDown,
-  DollarSign,
+  IndianRupee,
   ArrowUpCircle,
   ArrowDownCircle,
   Pencil,
@@ -58,6 +58,7 @@ import { useAuthStore } from "@/store/authStore";
 export default function TransactionsPage() {
   const router = useRouter();
   const isAdmin = useAuthStore((state) => state.isAdmin());
+  const hasShownAccessDenied = useRef(false);
   const [transactions, setTransactions] = useState([]);
   const [summary, setSummary] = useState({
     totalIncome: 0,
@@ -66,7 +67,8 @@ export default function TransactionsPage() {
   });
   const [customers, setCustomers] = useState([]);
   const [orders, setOrders] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [transactionsLoaded, setTransactionsLoaded] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState(null);
@@ -104,19 +106,20 @@ export default function TransactionsPage() {
 
   // Redirect if not admin
   useEffect(() => {
-    if (!isAdmin) {
+    if (!isAdmin && !hasShownAccessDenied.current) {
+      hasShownAccessDenied.current = true;
       router.push("/dashboard");
       toast.error("Access denied. Transactions are only accessible to administrators.");
     }
   }, [isAdmin, router]);
 
   useEffect(() => {
-    if (isAdmin) {
+    if (isAdmin && transactionsLoaded) {
       fetchTransactions();
       fetchCustomers();
       fetchOrders();
     }
-  }, [typeFilter, categoryFilter, dateFilter, searchQuery, currentPage, isAdmin]);
+  }, [typeFilter, categoryFilter, dateFilter, searchQuery, currentPage, isAdmin, transactionsLoaded]);
 
   const fetchTransactions = async () => {
     try {
@@ -559,7 +562,7 @@ export default function TransactionsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Net Profit</CardTitle>
-            <DollarSign className="h-4 w-4" />
+            <IndianRupee className="h-4 w-4" />
           </CardHeader>
           <CardContent>
             <div
@@ -671,17 +674,29 @@ export default function TransactionsPage() {
         <CardHeader>
           <CardTitle>All Transactions</CardTitle>
           <CardDescription>
-            Showing {pagination.totalItems} transaction(s)
+            {transactionsLoaded ? `Showing ${pagination.totalItems} transaction(s)` : "Click 'Load Transactions' to view transactions"}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {!transactionsLoaded ? (
+            <div className="text-center py-12">
+              <IndianRupee className="mx-auto h-16 w-16 text-gray-400 mb-4" />
+              <p className="text-lg font-medium mb-2">Transactions Not Loaded</p>
+              <p className="text-muted-foreground mb-6">
+                Click the button below to load transactions data
+              </p>
+              <Button onClick={() => setTransactionsLoaded(true)} size="lg">
+                <IndianRupee className="mr-2 h-5 w-5" />
+                Load Transactions
+              </Button>
+            </div>
+          ) : isLoading ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
             </div>
           ) : transactions.length === 0 ? (
             <div className="text-center py-8">
-              <DollarSign className="mx-auto h-12 w-12 text-gray-400" />
+              <IndianRupee className="mx-auto h-12 w-12 text-gray-400" />
               <p className="mt-2 text-muted-foreground">No transactions found</p>
             </div>
           ) : (

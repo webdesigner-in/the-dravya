@@ -64,7 +64,8 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [ordersLoaded, setOrdersLoaded] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
@@ -235,19 +236,36 @@ export default function OrdersPage() {
     }
   }, [selectedOrder, isInvoiceDialogOpen]);
 
-  // Fetch orders when dependencies change
+  // Auto-load orders if customer ID is in URL
   useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
+    if (customerIdFromUrl && !ordersLoaded) {
+      setOrdersLoaded(true);
+    }
+  }, [customerIdFromUrl, ordersLoaded]);
 
-  // Fetch customers and products on mount
+  // Fetch orders when dependencies change - only if orders have been loaded at least once
   useEffect(() => {
-    fetchCustomers();
-    fetchProducts();
-  }, [fetchCustomers, fetchProducts]);
+    if (ordersLoaded) {
+      fetchOrders();
+    }
+  }, [fetchOrders, ordersLoaded]);
+
+  // Lazy load customers and products only when dialog opens
+  useEffect(() => {
+    if (isDialogOpen) {
+      if (customers.length === 0) {
+        fetchCustomers();
+      }
+      if (products.length === 0) {
+        fetchProducts();
+      }
+    }
+  }, [isDialogOpen]);
 
   // Debounce customer search
   useEffect(() => {
+    if (!isDialogOpen) return; // Only search when dialog is open
+    
     const timer = setTimeout(() => {
       if (customerSearchQuery) {
         fetchCustomers(customerSearchQuery);
@@ -257,7 +275,7 @@ export default function OrdersPage() {
     }, 300); // 300ms delay
 
     return () => clearTimeout(timer);
-  }, [customerSearchQuery, fetchCustomers]);
+  }, [customerSearchQuery, isDialogOpen]);
 
   // Close customer dropdown when clicking outside
   useEffect(() => {
@@ -280,7 +298,14 @@ export default function OrdersPage() {
   }, []);
 
   const handleSearch = () => {
+    if (!ordersLoaded) {
+      setOrdersLoaded(true);
+    }
     fetchOrders();
+  };
+
+  const handleLoadOrders = () => {
+    setOrdersLoaded(true);
   };
 
   const handleRefresh = () => {
@@ -299,11 +324,16 @@ export default function OrdersPage() {
     setCurrentPage(1);
     
     // Reload data
-    fetchOrders();
+    if (ordersLoaded) {
+      fetchOrders();
+    }
     toast.success("Filters reset and data refreshed");
   };
 
   const handlePageChange = (newPage) => {
+    if (!ordersLoaded) {
+      setOrdersLoaded(true);
+    }
     setCurrentPage(newPage);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -1344,11 +1374,23 @@ export default function OrdersPage() {
         <CardHeader>
           <CardTitle className="text-lg md:text-xl">All Orders</CardTitle>
           <CardDescription className="text-sm">
-            Showing {pagination.totalItems} order(s)
+            {ordersLoaded ? `Showing ${pagination.totalItems} order(s)` : "Click 'Load Orders' to view orders"}
           </CardDescription>
         </CardHeader>
         <CardContent className="p-2 sm:p-6">
-          {isLoading ? (
+          {!ordersLoaded ? (
+            <div className="text-center py-12">
+              <ShoppingCart className="mx-auto h-16 w-16 text-gray-400 mb-4" />
+              <p className="text-lg font-medium mb-2">Orders Not Loaded</p>
+              <p className="text-muted-foreground mb-6">
+                Click the button below to load orders data
+              </p>
+              <Button onClick={handleLoadOrders} size="lg">
+                <ShoppingCart className="mr-2 h-5 w-5" />
+                Load Orders
+              </Button>
+            </div>
+          ) : isLoading ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
             </div>
@@ -1600,7 +1642,7 @@ export default function OrdersPage() {
           )}
           
           {/* Pagination Controls */}
-          {!isLoading && orders.length > 0 && (
+          {!isLoading && ordersLoaded && orders.length > 0 && (
             <PaginationControls
               currentPage={pagination.currentPage}
               totalPages={pagination.totalPages}

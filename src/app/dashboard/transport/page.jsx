@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { Button } from "@/components/ui/button";
@@ -39,9 +39,11 @@ export default function TransportPage() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
   const isAdmin = useAuthStore((state) => state.isAdmin());
+  const hasShownAccessDenied = useRef(false);
   const [vehicles, setVehicles] = useState([]);
   const [users, setUsers] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [vehiclesLoaded, setVehiclesLoaded] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState(null);
@@ -67,18 +69,19 @@ export default function TransportPage() {
   });
 
   useEffect(() => {
-    if (!isAdmin) {
+    if (!isAdmin && !hasShownAccessDenied.current) {
+      hasShownAccessDenied.current = true;
       router.push("/dashboard");
       toast.error("Access denied. Transport management is only accessible to administrators.");
     }
   }, [isAdmin, router]);
 
   useEffect(() => {
-    if (isAdmin) {
+    if (isAdmin && vehiclesLoaded) {
       fetchVehicles();
       fetchUsers();
     }
-  }, [isAdmin]);
+  }, [isAdmin, vehiclesLoaded]);
 
   const fetchVehicles = async () => {
     try {
@@ -540,7 +543,19 @@ export default function TransportPage() {
 
       {/* Vehicles List */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {isLoading ? (
+        {!vehiclesLoaded ? (
+          <div className="col-span-full text-center py-12">
+            <Truck className="mx-auto h-16 w-16 text-gray-400 mb-4" />
+            <p className="text-lg font-medium mb-2">Vehicles Not Loaded</p>
+            <p className="text-muted-foreground mb-6">
+              Click the button below to load vehicles data
+            </p>
+            <Button onClick={() => setVehiclesLoaded(true)} size="lg">
+              <Truck className="mr-2 h-5 w-5" />
+              Load Vehicles
+            </Button>
+          </div>
+        ) : isLoading ? (
           <div className="col-span-full flex justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
           </div>

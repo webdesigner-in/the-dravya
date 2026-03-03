@@ -51,7 +51,8 @@ export default function CustomersPage() {
   const [customers, setCustomers] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [customersLoaded, setCustomersLoaded] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [customerToDelete, setCustomerToDelete] = useState(null);
@@ -125,8 +126,10 @@ export default function CustomersPage() {
   }, [searchQuery]);
 
   useEffect(() => {
-    fetchCustomers();
-  }, [fetchCustomers]);
+    if (customersLoaded) {
+      fetchCustomers();
+    }
+  }, [fetchCustomers, customersLoaded]);
 
   // Generate new phone number when dialog opens for new customer
   useEffect(() => {
@@ -537,22 +540,45 @@ export default function CustomersPage() {
             <div>
               <CardTitle>All Customers</CardTitle>
               <CardDescription>
-                {pagination.totalItems} customer{pagination.totalItems !== 1 ? 's' : ''}
-                {searchQuery && ` matching "${searchQuery}"`}
+                {customersLoaded ? (
+                  <>
+                    {pagination.totalItems} customer{pagination.totalItems !== 1 ? 's' : ''}
+                    {searchQuery && ` matching "${searchQuery}"`}
+                  </>
+                ) : (
+                  "Click 'Load Customers' to view customers"
+                )}
               </CardDescription>
             </div>
             <div className="w-full sm:w-64">
               <Input
                 placeholder="Search customers..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  if (!customersLoaded) {
+                    setCustomersLoaded(true);
+                  }
+                }}
                 className="w-full"
               />
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {!customersLoaded ? (
+            <div className="text-center py-12">
+              <Users className="mx-auto h-16 w-16 text-gray-400 mb-4" />
+              <p className="text-lg font-medium mb-2">Customers Not Loaded</p>
+              <p className="text-muted-foreground mb-6">
+                Click the button below to load customers data
+              </p>
+              <Button onClick={() => setCustomersLoaded(true)} size="lg">
+                <Users className="mr-2 h-5 w-5" />
+                Load Customers
+              </Button>
+            </div>
+          ) : isLoading ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
             </div>

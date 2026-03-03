@@ -8,7 +8,7 @@ import {
   Package,
   Truck,
   Users,
-  DollarSign,
+  IndianRupee,
   FileText,
   Settings,
   BarChart3,
@@ -70,7 +70,7 @@ const adminOnlyItems = [
   { title: "Products", url: "/dashboard/products", icon: Droplets },
   { title: "Transport", url: "/dashboard/transport", icon: Truck },
   { title: "Routes", url: "/dashboard/routes", icon: MapPin },
-  { title: "Transactions", url: "/dashboard/transactions", icon: DollarSign },
+  { title: "Transactions", url: "/dashboard/transactions", icon: IndianRupee },
   { title: "Analytics", url: "/dashboard/analytics", icon: BarChart3 },
   { title: "User Management", url: "/dashboard/users", icon: Users },
 ];
