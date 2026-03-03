@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,8 +49,8 @@ export default function CustomersPage() {
   const user = useAuthStore((state) => state.user);
   const isAdmin = useAuthStore((state) => state.isAdmin());
   const [customers, setCustomers] = useState([]);
-  const [filteredCustomers, setFilteredCustomers] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -91,14 +91,18 @@ export default function CustomersPage() {
     notes: "",
   });
 
-  const fetchCustomers = async () => {
+  const fetchCustomers = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`/api/customers?page=${currentPage}&limit=20`);
+      let url = `/api/customers?page=${currentPage}&limit=20`;
+      if (debouncedSearch) {
+        url += `&search=${encodeURIComponent(debouncedSearch)}`;
+      }
+      
+      const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
         setCustomers(data.customers || []);
-        setFilteredCustomers(data.customers || []);
         if (data.pagination) {
           setPagination(data.pagination);
         }
@@ -108,11 +112,21 @@ export default function CustomersPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [currentPage, debouncedSearch]);
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setCurrentPage(1); // Reset to first page on search
+    }, 500); // 500ms delay
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   useEffect(() => {
     fetchCustomers();
-  }, [currentPage]);
+  }, [fetchCustomers]);
 
   // Generate new phone number when dialog opens for new customer
   useEffect(() => {
@@ -127,27 +141,8 @@ export default function CustomersPage() {
     }
   }, [isDialogOpen, editingCustomer]);
 
-  // Filter customers based on search query
-  useEffect(() => {
-    if (searchQuery.trim() === "") {
-      setFilteredCustomers(customers);
-    } else {
-      const query = searchQuery.toLowerCase();
-      const filtered = customers.filter(
-        (customer) =>
-          customer.name?.toLowerCase().includes(query) ||
-          customer.phone?.includes(query) ||
-          customer.email?.toLowerCase().includes(query) ||
-          customer.address?.area?.toLowerCase().includes(query) ||
-          customer.address?.city?.toLowerCase().includes(query)
-      );
-      setFilteredCustomers(filtered);
-    }
-  }, [searchQuery, customers]);
-
   const handlePageChange = (newPage) => {
     setCurrentPage(newPage);
-    setSearchQuery(""); // Clear search when changing pages
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -538,10 +533,8 @@ export default function CustomersPage() {
             <div>
               <CardTitle>All Customers</CardTitle>
               <CardDescription>
-                {searchQuery 
-                  ? `${filteredCustomers.length} of ${pagination.totalItems} customers`
-                  : `${pagination.totalItems} customer${pagination.totalItems !== 1 ? 's' : ''}`
-                }
+                {pagination.totalItems} customer{pagination.totalItems !== 1 ? 's' : ''}
+                {searchQuery && ` matching "${searchQuery}"`}
               </CardDescription>
             </div>
             <div className="w-full sm:w-64">
@@ -559,7 +552,7 @@ export default function CustomersPage() {
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
             </div>
-          ) : filteredCustomers.length === 0 ? (
+          ) : customers.length === 0 ? (
             <div className="text-center py-8">
               <Users className="mx-auto h-12 w-12 text-gray-400" />
               <p className="mt-2 text-muted-foreground">
@@ -573,7 +566,7 @@ export default function CustomersPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {filteredCustomers.map((customer) => (
+              {customers.map((customer) => (
                 <Card key={customer._id} className="hover:shadow-md transition-shadow">
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-3">
@@ -653,7 +646,7 @@ export default function CustomersPage() {
           )}
           
           {/* Pagination Controls */}
-          {!isLoading && !searchQuery && filteredCustomers.length > 0 && (
+          {!isLoading && customers.length > 0 && (
             <PaginationControls
               currentPage={pagination.currentPage}
               totalPages={pagination.totalPages}

@@ -138,13 +138,21 @@ const OrderSchema = new mongoose.Schema(
   }
 );
 
-// Indexes (removed duplicate)
-OrderSchema.index({ customer: 1 });
-OrderSchema.index({ orderType: 1 });
-OrderSchema.index({ status: 1 });
-OrderSchema.index({ paymentStatus: 1 });
-OrderSchema.index({ deliveryDate: 1 });
-OrderSchema.index({ assignedTo: 1 });
+// Indexes for performance optimization
+OrderSchema.index({ orderNumber: 1 });
+OrderSchema.index({ customer: 1, createdAt: -1 });
+OrderSchema.index({ orderType: 1, createdAt: -1 });
+OrderSchema.index({ status: 1, createdAt: -1 });
+OrderSchema.index({ paymentStatus: 1, status: 1 });
+OrderSchema.index({ deliveryDate: 1, status: 1 });
+OrderSchema.index({ assignedTo: 1, status: 1 });
+OrderSchema.index({ createdBy: 1, status: 1, createdAt: -1 });
+OrderSchema.index({ invoice: 1 });
+OrderSchema.index({ createdAt: -1 });
+
+// Compound index for common queries
+OrderSchema.index({ createdBy: 1, paymentStatus: 1, createdAt: -1 });
+OrderSchema.index({ customer: 1, paymentStatus: 1, createdAt: -1 });
 
 // Delete the model if it exists to force reload with new schema
 if (mongoose.models.Order) {

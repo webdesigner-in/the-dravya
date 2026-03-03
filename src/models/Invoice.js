@@ -148,12 +148,19 @@ InvoiceSchema.pre('save', function () {
   this.balanceAmount = this.totalAmount - this.paidAmount;
 });
 
-// Indexes (removed duplicate from unique field)
-InvoiceSchema.index({ customer: 1 });
-InvoiceSchema.index({ order: 1 });
-InvoiceSchema.index({ status: 1 });
-InvoiceSchema.index({ issueDate: 1 });
-InvoiceSchema.index({ dueDate: 1 });
+// Indexes for performance optimization
+InvoiceSchema.index({ invoiceNumber: 1 });
+InvoiceSchema.index({ order: 1 }, { unique: true });
+InvoiceSchema.index({ customer: 1, issueDate: -1 });
+InvoiceSchema.index({ status: 1, dueDate: 1 });
+InvoiceSchema.index({ status: 1, issueDate: -1 });
+InvoiceSchema.index({ createdBy: 1, issueDate: -1 });
+InvoiceSchema.index({ balanceAmount: 1, status: 1 });
+InvoiceSchema.index({ issueDate: -1 });
+InvoiceSchema.index({ dueDate: 1, status: 1 });
+
+// Compound index for overdue invoices
+InvoiceSchema.index({ status: 1, dueDate: 1, balanceAmount: 1 });
 
 // Delete the model if it exists to force reload with new schema
 if (mongoose.models.Invoice) {

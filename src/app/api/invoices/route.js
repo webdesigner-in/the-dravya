@@ -91,7 +91,6 @@ export async function GET(request) {
       },
     });
   } catch (error) {
-    console.error('Get invoices error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }

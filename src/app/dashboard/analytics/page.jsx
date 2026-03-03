@@ -67,8 +67,7 @@ export default function AnalyticsPage() {
       }
     } catch (error) {
       toast.error("Failed to fetch analytics");
-      console.error("Fetch error:", error);
-    } finally {
+      } finally {
       setIsLoading(false);
     }
   };

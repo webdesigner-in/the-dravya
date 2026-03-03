@@ -68,7 +68,6 @@ export async function PUT(request) {
       },
     });
   } catch (error) {
-    console.error('Update profile error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }

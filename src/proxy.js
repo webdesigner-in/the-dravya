@@ -1,4 +1,7 @@
 import { NextResponse } from 'next/server';
+import { createLogger } from '@/lib/logger';
+
+const logger = createLogger('Middleware');
 
 export function proxy(request) {
   try {
@@ -7,6 +10,7 @@ export function proxy(request) {
 
     // If accessing dashboard without token, redirect to login
     if (pathname.startsWith('/dashboard') && !token) {
+      logger.info(`Unauthorized access attempt to ${pathname}`);
       return NextResponse.redirect(new URL('/login', request.url));
     }
 
@@ -17,7 +21,7 @@ export function proxy(request) {
 
     return NextResponse.next();
   } catch (error) {
-    console.error('Middleware error:', error);
+    logger.error('Middleware error', error);
     return NextResponse.next();
   }
 }

@@ -43,7 +43,6 @@ export async function GET(request, { params }) {
       transaction,
     });
   } catch (error) {
-    console.error('Get transaction error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }
@@ -138,7 +137,6 @@ export async function PUT(request, { params }) {
       transaction: updatedTransaction,
     });
   } catch (error) {
-    console.error('Update transaction error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }
@@ -185,7 +183,6 @@ export async function DELETE(request, { params }) {
       message: 'Transaction deleted successfully',
     });
   } catch (error) {
-    console.error('Delete transaction error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }

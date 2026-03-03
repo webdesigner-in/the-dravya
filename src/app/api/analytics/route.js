@@ -231,7 +231,6 @@ export async function GET(request) {
       range,
     });
   } catch (error) {
-    console.error('Get analytics error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }

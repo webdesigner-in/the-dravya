@@ -97,7 +97,6 @@ export async function GET(request) {
       },
     });
   } catch (error) {
-    console.error('Get customer ledger error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }

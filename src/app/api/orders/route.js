@@ -7,6 +7,10 @@ import Transaction from '@/models/Transaction';
 import Invoice from '@/models/Invoice';
 import { getAuthUser } from '@/lib/auth';
 import { generateOrderNumber } from '@/lib/numberGenerator';
+import { errorResponse, parsePagination } from '@/lib/apiHelpers';
+import { createLogger } from '@/lib/logger';
+
+const logger = createLogger('OrdersAPI');
 
 // GET all orders
 export async function GET(request) {
@@ -30,8 +34,7 @@ export async function GET(request) {
     const monthFilter = searchParams.get('month'); // YYYY-MM format
     const search = searchParams.get('search');
     const sortBy = searchParams.get('sortBy') || 'date'; // 'date' or 'orderNumber'
-    const page = parseInt(searchParams.get('page')) || 1;
-    const limit = parseInt(searchParams.get('limit')) || 20;
+    const { page, limit, skip } = parsePagination(searchParams);
 
     // Filter by logged-in user (createdBy) - Admin sees all orders
     const filter = authUser.role === 'admin' ? {} : { createdBy: authUser.userId };
@@ -51,6 +54,16 @@ export async function GET(request) {
       filter.paymentStatus = paymentStatus;
     }
 
+    // Search filter - use database query instead of in-memory filtering
+    if (search) {
+      const searchRegex = new RegExp(search, 'i');
+      filter.$or = [
+        { orderNumber: searchRegex },
+        { 'guestInfo.name': searchRegex },
+        { 'guestInfo.phone': searchRegex }
+      ];
+    }
+
     // Month filter (specific month in YYYY-MM format) - use deliveryDate or createdAt
     if (monthFilter && monthFilter !== 'all') {
       const [year, month] = monthFilter.split('-');
@@ -58,11 +71,14 @@ export async function GET(request) {
       const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59, 999);
       
       // Match orders where deliveryDate OR createdAt is in the selected month
-      filter.$or = [
+      if (!filter.$or) {
+        filter.$or = [];
+      }
+      filter.$or.push(
         { deliveryDate: { $gte: startDate, $lte: endDate } },
         { deliveryDate: { $exists: false }, createdAt: { $gte: startDate, $lte: endDate } },
         { deliveryDate: null, createdAt: { $gte: startDate, $lte: endDate } }
-      ];
+      );
     }
     // Date filters (only apply if month filter is not set) - use deliveryDate or createdAt
     else if (dateFilter && dateFilter !== 'all') {
@@ -83,16 +99,16 @@ export async function GET(request) {
 
       if (startDate) {
         // Match orders where deliveryDate OR createdAt is after startDate
-        filter.$or = [
+        if (!filter.$or) {
+          filter.$or = [];
+        }
+        filter.$or.push(
           { deliveryDate: { $gte: startDate } },
           { deliveryDate: { $exists: false }, createdAt: { $gte: startDate } },
           { deliveryDate: null, createdAt: { $gte: startDate } }
-        ];
+        );
       }
     }
-
-    // Both admins and distributors can see all orders
-    // No role-based filtering for orders
 
     // Determine sort order
     let sortOrder = {};
@@ -102,44 +118,36 @@ export async function GET(request) {
       sortOrder = { deliveryDate: -1, createdAt: -1 }; // Sort by delivery date first, then creation date
     }
 
-    const orders = await Order.find(filter)
-      .populate('customer', 'name phone email address')
-      .populate('items.product', 'name sku size bottlesPerCarton')
-      .populate('createdBy', 'name email')
-      .populate('assignedTo', 'name email')
-      .populate({
-        path: 'invoice',
-        select: 'invoiceNumber status paidAmount balanceAmount totalAmount paymentHistory',
-        populate: {
-          path: 'paymentHistory.recordedBy',
-          select: 'name'
-        }
-      })
-      .sort(sortOrder);
+    // Execute queries in parallel for better performance
+    const [orders, totalOrders] = await Promise.all([
+      Order.find(filter)
+        .select('orderNumber orderType customer guestInfo items totalAmount discount tax finalAmount status paymentStatus paidAmount paymentMethod deliveryDate notes invoice createdAt')
+        .populate('customer', 'name phone email address')
+        .populate('items.product', 'name sku size bottlesPerCarton')
+        .populate('createdBy', 'name email')
+        .populate('assignedTo', 'name email')
+        .populate({
+          path: 'invoice',
+          select: 'invoiceNumber status paidAmount balanceAmount totalAmount paymentHistory',
+          populate: {
+            path: 'paymentHistory.recordedBy',
+            select: 'name'
+          }
+        })
+        .sort(sortOrder)
+        .skip(skip)
+        .limit(limit)
+        .lean(), // Use lean() for better performance
+      Order.countDocuments(filter)
+    ]);
 
-    // Search filter (applied after population)
-    let filteredOrders = orders;
-    if (search) {
-      const searchLower = search.toLowerCase();
-      filteredOrders = orders.filter(
-        (order) =>
-          order.orderNumber.toLowerCase().includes(searchLower) ||
-          order.customer?.name.toLowerCase().includes(searchLower) ||
-          order.customer?.phone.includes(search) ||
-          order.guestInfo?.name?.toLowerCase().includes(searchLower) ||
-          order.guestInfo?.phone?.includes(search)
-      );
-    }
-
-    // Calculate pagination
-    const totalOrders = filteredOrders.length;
     const totalPages = Math.ceil(totalOrders / limit);
-    const skip = (page - 1) * limit;
-    const paginatedOrders = filteredOrders.slice(skip, skip + limit);
+
+    logger.info(`Fetched ${orders.length} orders`, { userId: authUser.userId, page, limit, totalOrders });
 
     return NextResponse.json({
       success: true,
-      orders: paginatedOrders,
+      orders,
       pagination: {
         currentPage: page,
         totalPages,
@@ -155,11 +163,8 @@ export async function GET(request) {
       },
     });
   } catch (error) {
-    console.error('Get orders error:', error);
-    return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
-    );
+    logger.error('Get orders error', error, { userId: authUser?.userId });
+    return errorResponse(error, 'Failed to fetch orders');
   }
 }
 
@@ -334,7 +339,6 @@ export async function POST(request) {
       { status: 201 }
     );
   } catch (error) {
-    console.error('Create order error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }

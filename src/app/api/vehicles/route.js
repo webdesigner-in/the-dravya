@@ -33,7 +33,6 @@ export async function GET(request) {
       vehicles,
     });
   } catch (error) {
-    console.error('Get vehicles error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }
@@ -56,6 +55,11 @@ export async function POST(request) {
     const body = await request.json();
 
     await connectDB();
+
+    // Clean up empty string for driver field
+    if (body.driver === '') {
+      body.driver = undefined;
+    }
 
     // Check if vehicle number already exists
     const existingVehicle = await Vehicle.findOne({
@@ -86,7 +90,6 @@ export async function POST(request) {
       { status: 201 }
     );
   } catch (error) {
-    console.error('Create vehicle error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }

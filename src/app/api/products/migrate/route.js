@@ -29,7 +29,6 @@ export async function POST(request) {
       modifiedCount: result.modifiedCount,
     });
   } catch (error) {
-    console.error('Migration error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }

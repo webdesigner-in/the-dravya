@@ -22,6 +22,7 @@ const TransactionSchema = new mongoose.Schema(
         'maintenance',
         'rent',
         'utility',
+        'transport',
         'other',
       ],
       required: true,
@@ -82,12 +83,22 @@ const TransactionSchema = new mongoose.Schema(
   }
 );
 
-// Indexes (removed duplicate from unique field)
-TransactionSchema.index({ type: 1 });
-TransactionSchema.index({ category: 1 });
-TransactionSchema.index({ date: 1 });
-TransactionSchema.index({ customer: 1 });
+// Indexes for performance optimization
+TransactionSchema.index({ transactionNumber: 1 });
+TransactionSchema.index({ type: 1, date: -1 });
+TransactionSchema.index({ category: 1, date: -1 });
+TransactionSchema.index({ customer: 1, date: -1 });
 TransactionSchema.index({ order: 1 });
+TransactionSchema.index({ createdBy: 1, date: -1 });
+TransactionSchema.index({ paymentStatus: 1, type: 1 });
+TransactionSchema.index({ date: -1 });
+
+// Compound indexes for common queries
+TransactionSchema.index({ type: 1, category: 1, date: -1 });
+TransactionSchema.index({ customer: 1, type: 1, date: -1 });
+
+// Text index for search
+TransactionSchema.index({ description: 'text', reference: 'text' });
 
 // Delete the model if it exists to force reload with new schema
 if (mongoose.models.Transaction) {

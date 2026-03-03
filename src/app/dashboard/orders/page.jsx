@@ -169,6 +169,19 @@ export default function OrdersPage() {
     fetchProducts();
   }, [statusFilter, paymentFilter, dateFilter, customerIdFromUrl, currentPage, searchQuery, sortBy]);
 
+  // Debounce customer search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (customerSearchQuery) {
+        fetchCustomers(customerSearchQuery);
+      } else {
+        fetchCustomers(); // Load all when search is empty
+      }
+    }, 300); // 300ms delay
+
+    return () => clearTimeout(timer);
+  }, [customerSearchQuery]);
+
   const fetchOrders = async () => {
     try {
       setIsLoading(true);
@@ -196,15 +209,19 @@ export default function OrdersPage() {
       }
     } catch (error) {
       toast.error("Failed to fetch orders");
-      console.error('Fetch orders error:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const fetchCustomers = async () => {
+  const fetchCustomers = async (searchTerm = "") => {
     try {
-      const response = await fetch("/api/customers");
+      let url = "/api/customers?limit=100"; // Load more customers for dropdown
+      if (searchTerm) {
+        url += `&search=${encodeURIComponent(searchTerm)}`;
+      }
+      
+      const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
         setCustomers(data.customers || []);
@@ -218,7 +235,7 @@ export default function OrdersPage() {
         }
       }
     } catch (error) {
-      console.error("Failed to fetch customers");
+      // Error already logged
     }
   };
 
@@ -230,7 +247,7 @@ export default function OrdersPage() {
         setProducts(data.products || []);
       }
     } catch (error) {
-      console.error("Failed to fetch products");
+      // Error already logged
     }
   };
 
@@ -633,7 +650,6 @@ export default function OrdersPage() {
       // Refresh orders from server to ensure consistency
       await fetchOrders();
     } catch (error) {
-      console.error("Payment update error:", error);
       toast.error(error.message);
     }
   };
@@ -796,28 +812,15 @@ export default function OrdersPage() {
                             />
                           </div>
                         </div>
-                        {customers
-                          .filter((customer) => {
-                            const searchLower = customerSearchQuery.toLowerCase();
-                            return (
-                              customer.name.toLowerCase().includes(searchLower) ||
-                              customer.phone.includes(customerSearchQuery)
-                            );
-                          })
-                          .map((customer) => (
+                        {customers.length > 0 ? (
+                          customers.map((customer) => (
                             <SelectItem key={customer._id} value={customer._id}>
                               {customer.name} - {customer.phone}
                             </SelectItem>
-                          ))}
-                        {customers.filter((customer) => {
-                          const searchLower = customerSearchQuery.toLowerCase();
-                          return (
-                            customer.name.toLowerCase().includes(searchLower) ||
-                            customer.phone.includes(customerSearchQuery)
-                          );
-                        }).length === 0 && (
+                          ))
+                        ) : (
                           <div className="p-4 text-center text-sm text-gray-500">
-                            No customers found
+                            {customerSearchQuery ? "No customers found" : "Loading customers..."}
                           </div>
                         )}
                       </SelectContent>

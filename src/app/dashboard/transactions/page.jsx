@@ -157,7 +157,7 @@ export default function TransactionsPage() {
         setCustomers(data.customers || []);
       }
     } catch (error) {
-      console.error("Failed to fetch customers");
+      // Error already logged
     }
   };
 
@@ -169,7 +169,7 @@ export default function TransactionsPage() {
         setOrders(data.orders || []);
       }
     } catch (error) {
-      console.error("Failed to fetch orders");
+      // Error already logged
     }
   };
 
@@ -273,7 +273,7 @@ export default function TransactionsPage() {
     if (formData.type === "income") {
       return ["sale", "other"];
     }
-    return ["purchase", "salary", "fuel", "maintenance", "rent", "utility", "other"];
+    return ["purchase", "salary", "fuel", "maintenance", "rent", "utility", "transport", "other"];
   };
 
   // Prevent rendering for non-admin users
@@ -625,6 +625,7 @@ export default function TransactionsPage() {
                   <SelectItem value="maintenance">Maintenance</SelectItem>
                   <SelectItem value="rent">Rent</SelectItem>
                   <SelectItem value="utility">Utility</SelectItem>
+                  <SelectItem value="transport">Transport</SelectItem>
                   <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
               </Select>

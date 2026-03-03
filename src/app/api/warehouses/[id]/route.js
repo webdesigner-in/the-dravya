@@ -34,7 +34,6 @@ export async function GET(request, { params }) {
       warehouse,
     });
   } catch (error) {
-    console.error('Get warehouse error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }
@@ -59,6 +58,11 @@ export async function PUT(request, { params }) {
     const { id } = await params;
     const body = await request.json();
 
+    // Clean up empty string fields that should be ObjectId
+    if (body.manager === '') {
+      body.manager = undefined;
+    }
+
     const warehouse = await Warehouse.findByIdAndUpdate(
       id,
       { $set: body },
@@ -77,7 +81,6 @@ export async function PUT(request, { params }) {
       warehouse,
     });
   } catch (error) {
-    console.error('Update warehouse error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }
@@ -114,7 +117,6 @@ export async function DELETE(request, { params }) {
       message: 'Warehouse deleted successfully',
     });
   } catch (error) {
-    console.error('Delete warehouse error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }

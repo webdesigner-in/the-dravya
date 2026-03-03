@@ -69,10 +69,18 @@ const CustomerSchema = new mongoose.Schema(
   }
 );
 
-// Index for geospatial queries - only if location exists
+// Indexes for performance optimization
+CustomerSchema.index({ phone: 1 }, { unique: true });
+CustomerSchema.index({ email: 1 }, { sparse: true });
+CustomerSchema.index({ isActive: 1, customerType: 1 });
+CustomerSchema.index({ assignedDistributor: 1, isActive: 1 });
+CustomerSchema.index({ createdAt: -1 });
+CustomerSchema.index({ outstandingBalance: 1 });
+
+// Text index for search
+CustomerSchema.index({ name: 'text', phone: 'text' });
+
+// Geospatial index - only if location exists
 CustomerSchema.index({ location: '2dsphere' }, { sparse: true });
-CustomerSchema.index({ phone: 1 });
-CustomerSchema.index({ customerType: 1 });
-CustomerSchema.index({ assignedDistributor: 1 });
 
 export default mongoose.models.Customer || mongoose.model('Customer', CustomerSchema);

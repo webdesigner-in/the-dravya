@@ -9,25 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Download, Share2, Printer, DollarSign } from "lucide-react";
+import { ArrowLeft, Download, Share2, Printer } from "lucide-react";
 import { toast } from "sonner";
 
 export default function InvoiceDetailPage() {
@@ -36,12 +18,6 @@ export default function InvoiceDetailPage() {
   const printRef = useRef();
   const [invoice, setInvoice] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
-  const [paymentData, setPaymentData] = useState({
-    amount: "",
-    paymentMethod: "cash",
-    notes: "",
-  });
 
   useEffect(() => {
     fetchInvoice();
@@ -102,30 +78,7 @@ export default function InvoiceDetailPage() {
     }
   };
 
-  const handleRecordPayment = async (e) => {
-    e.preventDefault();
 
-    try {
-      const response = await fetch(`/api/invoices/${params.id}/payment`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(paymentData),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to record payment");
-      }
-
-      toast.success("Payment recorded successfully!");
-      setIsPaymentDialogOpen(false);
-      setPaymentData({ amount: "", paymentMethod: "cash", notes: "" });
-      fetchInvoice(); // Refresh invoice data
-    } catch (error) {
-      toast.error(error.message);
-    }
-  };
 
   if (isLoading) {
     return (
@@ -148,13 +101,6 @@ export default function InvoiceDetailPage() {
           Back
         </Button>
         <div className="flex flex-wrap gap-2">
-          {invoice?.balanceAmount > 0 && (
-            <Button variant="default" onClick={() => setIsPaymentDialogOpen(true)} className="flex-1 sm:flex-none">
-              <DollarSign className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">Record Payment</span>
-              <span className="sm:hidden">Payment</span>
-            </Button>
-          )}
           <Button variant="outline" onClick={handlePrint} className="flex-1 sm:flex-none">
             <Printer className="mr-2 h-4 w-4" />
             <span className="hidden sm:inline">Print</span>
@@ -350,81 +296,6 @@ export default function InvoiceDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Record Payment Dialog */}
-      <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Record Payment</DialogTitle>
-            <DialogDescription>
-              Record a payment for invoice {invoice?.invoiceNumber}
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleRecordPayment}>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="amount">Amount (₹) *</Label>
-                <Input
-                  id="amount"
-                  type="number"
-                  value={paymentData.amount}
-                  onChange={(e) =>
-                    setPaymentData({ ...paymentData, amount: e.target.value })
-                  }
-                  max={invoice?.balanceAmount}
-                  min="0.01"
-                  step="0.01"
-                  required
-                />
-                <p className="text-sm text-muted-foreground">
-                  Balance Due: ₹{invoice?.balanceAmount.toFixed(2)}
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="paymentMethod">Payment Method *</Label>
-                <Select
-                  value={paymentData.paymentMethod}
-                  onValueChange={(value) =>
-                    setPaymentData({ ...paymentData, paymentMethod: value })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cash">Cash</SelectItem>
-                    <SelectItem value="card">Card</SelectItem>
-                    <SelectItem value="upi">UPI</SelectItem>
-                    <SelectItem value="bank-transfer">Bank Transfer</SelectItem>
-                    <SelectItem value="cheque">Cheque</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="paymentNotes">Notes</Label>
-                <Textarea
-                  id="paymentNotes"
-                  value={paymentData.notes}
-                  onChange={(e) =>
-                    setPaymentData({ ...paymentData, notes: e.target.value })
-                  }
-                  rows={2}
-                  placeholder="Payment notes (optional)"
-                />
-              </div>
-            </div>
-            <DialogFooter className="mt-6">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsPaymentDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit">Record Payment</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

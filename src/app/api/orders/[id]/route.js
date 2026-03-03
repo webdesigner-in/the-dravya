@@ -36,7 +36,6 @@ export async function GET(request, { params }) {
       order,
     });
   } catch (error) {
-    console.error('Get order error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }
@@ -178,7 +177,6 @@ export async function PUT(request, { params }) {
       order,
     });
   } catch (error) {
-    console.error('Update order error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }
@@ -253,7 +251,6 @@ export async function DELETE(request, { params }) {
       },
     });
   } catch (error) {
-    console.error('Delete order error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }

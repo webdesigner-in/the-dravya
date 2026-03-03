@@ -87,7 +87,6 @@ export default function ReportsPage() {
       }
     } catch (error) {
       toast.error("Failed to fetch customer ledger");
-      console.error("Fetch error:", error);
     } finally {
       setIsLoading(false);
     }

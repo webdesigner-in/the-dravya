@@ -3,6 +3,7 @@ import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { Toaster } from "@/components/ui/sonner";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 
 const patrickHand = Patrick_Hand({
@@ -23,10 +24,12 @@ export default function RootLayout({ children }) {
     <html lang="en" className={patrickHand.variable}>
       
       <body className={patrickHand.className}>
-       <AuthProvider>
-         <TooltipProvider>{children}</TooltipProvider>
-         <Toaster position="top-right" />
-       </AuthProvider>
+       <ErrorBoundary>
+         <AuthProvider>
+           <TooltipProvider>{children}</TooltipProvider>
+           <Toaster position="top-right" />
+         </AuthProvider>
+       </ErrorBoundary>
       </body>
     </html>
   );

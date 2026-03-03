@@ -54,7 +54,6 @@ export async function POST(request) {
       },
     });
   } catch (error) {
-    console.error('Login error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }

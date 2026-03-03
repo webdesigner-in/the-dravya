@@ -116,7 +116,6 @@ export async function GET(request) {
       },
     });
   } catch (error) {
-    console.error('Get transactions error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }
@@ -209,7 +208,6 @@ export async function POST(request) {
       { status: 201 }
     );
   } catch (error) {
-    console.error('Create transaction error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }

@@ -39,7 +39,6 @@ export async function GET(request) {
       movements,
     });
   } catch (error) {
-    console.error('Get stock movements error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }
@@ -124,7 +123,6 @@ export async function POST(request) {
       movement: populatedMovement,
     }, { status: 201 });
   } catch (error) {
-    console.error('Create stock movement error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }

@@ -75,8 +75,15 @@ const ProductSchema = new mongoose.Schema(
   }
 );
 
-// Index for faster queries (removed duplicate)
-ProductSchema.index({ category: 1 });
-ProductSchema.index({ isActive: 1 });
+// Indexes for performance optimization
+ProductSchema.index({ sku: 1 }, { unique: true });
+ProductSchema.index({ barcode: 1 }, { sparse: true });
+ProductSchema.index({ category: 1, isActive: 1 });
+ProductSchema.index({ isActive: 1, stock: 1 });
+ProductSchema.index({ stock: 1, minStockLevel: 1 });
+ProductSchema.index({ createdAt: -1 });
+
+// Text index for search
+ProductSchema.index({ name: 'text', description: 'text' });
 
 export default mongoose.models.Product || mongoose.model('Product', ProductSchema);

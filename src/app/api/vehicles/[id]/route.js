@@ -21,6 +21,11 @@ export async function PUT(request, { params }) {
     const { id } = await params;
     const body = await request.json();
 
+    // Clean up empty string for driver field
+    if (body.driver === '') {
+      body.driver = undefined;
+    }
+
     const vehicle = await Vehicle.findByIdAndUpdate(
       id,
       { $set: body },
@@ -39,7 +44,6 @@ export async function PUT(request, { params }) {
       vehicle,
     });
   } catch (error) {
-    console.error('Update vehicle error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }
@@ -76,7 +80,6 @@ export async function DELETE(request, { params }) {
       message: 'Vehicle deleted successfully',
     });
   } catch (error) {
-    console.error('Delete vehicle error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }

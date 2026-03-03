@@ -35,7 +35,6 @@ export async function GET(request) {
       warehouses,
     });
   } catch (error) {
-    console.error('Get warehouses error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }
@@ -93,7 +92,7 @@ export async function POST(request) {
       code: code.toUpperCase(),
       address,
       capacity,
-      manager,
+      manager: manager && manager !== '' ? manager : undefined, // Only set if not empty
       contactNumber,
       email,
       type,
@@ -113,7 +112,6 @@ export async function POST(request) {
       { status: 201 }
     );
   } catch (error) {
-    console.error('Create warehouse error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }

@@ -32,7 +32,6 @@ export async function GET(request, { params }) {
       product,
     });
   } catch (error) {
-    console.error('Get product error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }
@@ -75,7 +74,6 @@ export async function PUT(request, { params }) {
       product,
     });
   } catch (error) {
-    console.error('Update product error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }
@@ -112,7 +110,6 @@ export async function DELETE(request, { params }) {
       message: 'Product deleted successfully',
     });
   } catch (error) {
-    console.error('Delete product error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }

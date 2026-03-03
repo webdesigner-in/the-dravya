@@ -48,7 +48,6 @@ export async function GET(request) {
       routes,
     });
   } catch (error) {
-    console.error('Get routes error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }
@@ -95,7 +94,6 @@ export async function POST(request) {
       { status: 201 }
     );
   } catch (error) {
-    console.error('Create route error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }

@@ -37,7 +37,6 @@ export async function GET() {
       },
     });
   } catch (error) {
-    console.error('Get user error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }

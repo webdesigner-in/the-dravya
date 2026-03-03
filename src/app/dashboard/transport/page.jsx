@@ -102,7 +102,7 @@ export default function TransportPage() {
         setUsers(data.users || []);
       }
     } catch (error) {
-      console.error("Failed to fetch users");
+      // Error already logged by logger
     }
   };
 

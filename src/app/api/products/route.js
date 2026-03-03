@@ -32,7 +32,6 @@ export async function GET(request) {
       products,
     });
   } catch (error) {
-    console.error('Get products error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }
@@ -93,7 +92,6 @@ export async function POST(request) {
       product,
     }, { status: 201 });
   } catch (error) {
-    console.error('Create product error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }

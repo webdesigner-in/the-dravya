@@ -66,14 +66,13 @@ export default function DashboardPage() {
         const data = await response.json();
         setDashboardData(data.dashboard);
       } else {
-        console.error("Failed to fetch dashboard data:", response.status);
         setDashboardData(null);
       }
     } catch (error) {
       if (error.name === 'AbortError') {
-        console.error("Dashboard request timed out");
+        // Timeout error
       } else {
-        console.error("Error fetching dashboard data:", error);
+        // Fetch error
       }
       setDashboardData(null);
     } finally {

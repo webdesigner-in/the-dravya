@@ -40,7 +40,6 @@ export async function GET(request, { params }) {
       },
     });
   } catch (error) {
-    console.error('Get user error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }
@@ -128,7 +127,6 @@ export async function PUT(request, { params }) {
       },
     });
   } catch (error) {
-    console.error('Update user error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }
@@ -173,7 +171,6 @@ export async function DELETE(request, { params }) {
       message: 'User deleted successfully',
     });
   } catch (error) {
-    console.error('Delete user error:', error);
     return NextResponse.json(
       { error: 'Something went wrong' },
       { status: 500 }
