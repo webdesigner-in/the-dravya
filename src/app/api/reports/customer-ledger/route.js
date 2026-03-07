@@ -34,7 +34,10 @@ export async function GET(request) {
 
     const ledgerData = await Order.aggregate([
       {
-        $match: matchStage
+        $match: {
+          ...matchStage,
+          customer: { $exists: true, $ne: null } // Only include orders with customers
+        }
       },
       {
         $group: {
