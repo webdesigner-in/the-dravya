@@ -32,182 +32,41 @@ export async function GET(request) {
 
     await connectDB();
 
-    // Verify connection is ready
-    if (mongoose.connection.readyState !== 1) {
-      throw new Error('Database connection not ready');
-    }
-
     const { searchParams } = new URL(request.url);
     const customerId = searchParams.get('customer');
     const status = searchParams.get('status');
     const paymentStatus = searchParams.get('paymentStatus');
-    const dateFilter = searchParams.get('date'); // today, week, month
-    const monthFilter = searchParams.get('month'); // YYYY-MM format
     const search = searchParams.get('search');
-    const sortBy = searchParams.get('sortBy') || 'date'; // 'date' or 'orderNumber'
     const { page, limit, skip } = parsePagination(searchParams);
 
-    // Filter by logged-in user (createdBy) - Admin sees all orders
+    // Build simple filter
     const filter = authUser.role === 'admin' ? {} : { createdBy: authUser.userId };
 
-    // Filter by customer
-    if (customerId) {
-      filter.customer = customerId;
-    }
+    // Add simple filters
+    if (customerId) filter.customer = customerId;
+    if (status) filter.status = status;
+    if (paymentStatus) filter.paymentStatus = paymentStatus;
 
-    // Filter by status
-    if (status) {
-      filter.status = status;
-    }
-
-    // Filter by payment status
-    if (paymentStatus) {
-      filter.paymentStatus = paymentStatus;
-    }
-
-    // Search filter - search in order number, guest info, and customer names
-    let searchConditions = [];
+    // Simple search - only on order number
     if (search) {
-      const searchRegex = new RegExp(search, 'i');
-      
-      // First, find customers matching the search
-      const matchingCustomers = await Customer.find({
-        $or: [
-          { name: searchRegex },
-          { phone: searchRegex }
-        ]
-      }).select('_id').lean();
-      
-      const customerIds = matchingCustomers.map(c => c._id);
-      
-      // Build search conditions
-      searchConditions = [
-        { orderNumber: searchRegex },
-        { 'guestInfo.name': searchRegex },
-        { 'guestInfo.phone': searchRegex }
-      ];
-      
-      // Add customer IDs to search if any found
-      if (customerIds.length > 0) {
-        searchConditions.push({ customer: { $in: customerIds } });
-      }
+      filter.orderNumber = { $regex: search, $options: 'i' };
     }
 
-    // Date filter conditions
-    let dateConditions = [];
-    
-    // Month filter (specific month in YYYY-MM format) - use deliveryDate or createdAt
-    if (monthFilter && monthFilter !== 'all') {
-      const [year, month] = monthFilter.split('-');
-      const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
-      const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59, 999);
-      
-      dateConditions = [
-        { deliveryDate: { $gte: startDate, $lte: endDate } },
-        { deliveryDate: { $exists: false }, createdAt: { $gte: startDate, $lte: endDate } },
-        { deliveryDate: null, createdAt: { $gte: startDate, $lte: endDate } }
-      ];
-    }
-    // Date filters (only apply if month filter is not set) - use deliveryDate or createdAt
-    else if (dateFilter && dateFilter !== 'all') {
-      const now = new Date();
-      let startDate;
-
-      switch (dateFilter) {
-        case 'today':
-          startDate = new Date(now.setHours(0, 0, 0, 0));
-          break;
-        case 'week':
-          startDate = new Date(now.setDate(now.getDate() - 7));
-          break;
-        case 'month':
-          startDate = new Date(now.setMonth(now.getMonth() - 1));
-          break;
-      }
-
-      if (startDate) {
-        dateConditions = [
-          { deliveryDate: { $gte: startDate } },
-          { deliveryDate: { $exists: false }, createdAt: { $gte: startDate } },
-          { deliveryDate: null, createdAt: { $gte: startDate } }
-        ];
-      }
-    }
-
-    // Combine search and date conditions properly
-    if (searchConditions.length > 0 && dateConditions.length > 0) {
-      // Both search and date filters - use $and with nested $or
-      filter.$and = [
-        { $or: searchConditions },
-        { $or: dateConditions }
-      ];
-    } else if (searchConditions.length > 0) {
-      // Only search filter
-      filter.$or = searchConditions;
-    } else if (dateConditions.length > 0) {
-      // Only date filter
-      filter.$or = dateConditions;
-    }
-
-    // Determine sort order
-    let sortOrder = {};
-    if (sortBy === 'orderNumber') {
-      sortOrder = { orderNumber: -1 }; // Sort by order number descending
-    } else {
-      sortOrder = { deliveryDate: -1, createdAt: -1 }; // Sort by delivery date first, then creation date
-    }
-
-    // Log filter for debugging (only in development)
-    if (process.env.NODE_ENV === 'development') {
-      logger.info('Orders filter:', JSON.stringify(filter, null, 2));
-    }
-
-    // Execute queries in parallel for better performance
-    let orders, totalOrders;
-    
-    try {
-      // Validate filter object before querying
-      if (filter.$and && (!Array.isArray(filter.$and) || filter.$and.length === 0)) {
-        delete filter.$and;
-      }
-      if (filter.$or && (!Array.isArray(filter.$or) || filter.$or.length === 0)) {
-        delete filter.$or;
-      }
-
-      [orders, totalOrders] = await Promise.all([
-        Order.find(filter)
-          .select('orderNumber orderType customer guestInfo items totalAmount discount tax finalAmount status paymentStatus paidAmount paymentMethod deliveryDate notes invoice createdAt')
-          .populate('customer', 'name phone')
-          .populate('items.product', 'name sku')
-          .populate('createdBy', 'name')
-          .populate('assignedTo', 'name')
-          .populate('invoice', 'invoiceNumber status paidAmount balanceAmount')
-          .sort(sortOrder)
-          .skip(skip)
-          .limit(limit)
-          .lean() // Use lean() for better performance
-          .maxTimeMS(25000), // Add query timeout for production
-        Order.countDocuments(filter).maxTimeMS(10000)
-      ]);
-    } catch (queryError) {
-      logger.error('MongoDB query error:', queryError);
-      logger.error('Filter that caused error:', JSON.stringify(filter, null, 2));
-      
-      // Check if it's a timeout error
-      if (queryError.name === 'MongooseError' && queryError.message.includes('buffering timed out')) {
-        throw new Error('Database connection timeout. Please try again.');
-      }
-      
-      if (queryError.name === 'MongoServerError' && queryError.code === 50) {
-        throw new Error('Query took too long to execute. Please refine your search.');
-      }
-      
-      throw new Error(`Database query failed: ${queryError.message}`);
-    }
+    // Simple query - no complex $or/$and
+    const [orders, totalOrders] = await Promise.all([
+      Order.find(filter)
+        .select('orderNumber orderType customer guestInfo items totalAmount finalAmount status paymentStatus paidAmount deliveryDate createdAt')
+        .populate('customer', 'name phone')
+        .populate('items.product', 'name')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean()
+        .maxTimeMS(20000),
+      Order.countDocuments(filter).maxTimeMS(5000)
+    ]);
 
     const totalPages = Math.ceil(totalOrders / limit);
-
-    // logger.info(`Fetched ${orders.length} orders`, { userId: authUser.userId, page, limit, totalOrders });
 
     return NextResponse.json({
       success: true,
@@ -219,25 +78,14 @@ export async function GET(request) {
         itemsPerPage: limit,
         hasMore: page < totalPages,
       },
-    }, {
-      headers: {
-        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0',
-      },
     });
   } catch (error) {
-    logger.error('Get orders error', error);
+    console.error('Orders API Error:', error);
     
-    // Return more specific error message with stack trace in development
     return NextResponse.json(
       { 
         error: 'Failed to fetch orders',
         message: error.message,
-        details: process.env.NODE_ENV === 'development' ? {
-          stack: error.stack,
-          filter: JSON.stringify(filter || {}),
-        } : undefined
       },
       { status: 500 }
     );
