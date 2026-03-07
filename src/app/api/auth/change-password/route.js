@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import { getAuthUser } from '@/lib/auth';
+import { handleApiError } from '@/lib/errorHandler';
 
 export async function PUT(request) {
   let authUser;
@@ -61,9 +62,10 @@ export async function PUT(request) {
       message: 'Password changed successfully',
     });
   } catch (error) {
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to change password');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }

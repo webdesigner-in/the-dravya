@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Product from '@/models/Product';
 import { getAuthUser } from '@/lib/auth';
+import { handleApiError } from '@/lib/errorHandler';
 
 // Migration endpoint to add bottlesPerCarton to existing products
 export async function POST(request) {
@@ -30,9 +31,10 @@ export async function POST(request) {
       modifiedCount: result.modifiedCount,
     });
   } catch (error) {
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to run migration');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }

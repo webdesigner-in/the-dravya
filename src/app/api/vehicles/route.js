@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Vehicle from '@/models/Vehicle';
 import User from '@/models/User';
 import { getAuthUser } from '@/lib/auth';
+import { handleApiError } from '@/lib/errorHandler';
 
 // GET all vehicles
 export async function GET(request) {
@@ -34,9 +35,10 @@ export async function GET(request) {
       vehicles,
     });
   } catch (error) {
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to fetch vehicles');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }
@@ -92,9 +94,10 @@ export async function POST(request) {
       { status: 201 }
     );
   } catch (error) {
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to create vehicle');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }

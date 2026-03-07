@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Order from '@/models/Order';
 import Customer from '@/models/Customer';
 import { getAuthUser } from '@/lib/auth';
+import { handleApiError } from '@/lib/errorHandler';
 
 // GET customer ledger report
 export async function GET(request) {
@@ -110,9 +111,10 @@ export async function GET(request) {
       },
     });
   } catch (error) {
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to fetch customer ledger');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }

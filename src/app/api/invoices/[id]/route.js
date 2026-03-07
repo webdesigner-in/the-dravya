@@ -4,6 +4,7 @@ import Invoice from '@/models/Invoice';
 import Order from '@/models/Order';
 import Product from '@/models/Product';
 import { getAuthUser } from '@/lib/auth';
+import { handleApiError } from '@/lib/errorHandler';
 
 // GET single invoice
 export async function GET(request, { params }) {
@@ -40,10 +41,10 @@ export async function GET(request, { params }) {
       invoice,
     });
   } catch (error) {
-    console.error('Get invoice error:', error);
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to fetch invoice');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }
@@ -139,10 +140,10 @@ export async function PUT(request, { params }) {
       invoice: updatedInvoice,
     });
   } catch (error) {
-    console.error('Update invoice error:', error);
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to update invoice');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }
@@ -189,10 +190,10 @@ export async function DELETE(request, { params }) {
       message: 'Invoice deleted successfully',
     });
   } catch (error) {
-    console.error('Delete invoice error:', error);
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to delete invoice');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }

@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Vehicle from '@/models/Vehicle';
 import User from '@/models/User';
 import { getAuthUser } from '@/lib/auth';
+import { handleApiError } from '@/lib/errorHandler';
 
 // PUT update vehicle
 export async function PUT(request, { params }) {
@@ -45,9 +46,10 @@ export async function PUT(request, { params }) {
       vehicle,
     });
   } catch (error) {
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to update vehicle');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }
@@ -82,9 +84,10 @@ export async function DELETE(request, { params }) {
       message: 'Vehicle deleted successfully',
     });
   } catch (error) {
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to delete vehicle');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }

@@ -27,10 +27,11 @@ export default function RootLayout({ children }) {
        <ErrorBoundary>
          <AuthProvider>
            <TooltipProvider>{children}</TooltipProvider>
-           <Toaster position="top-right" />
+           <Toaster position="top-right" />     
          </AuthProvider>
        </ErrorBoundary>
       </body>
     </html>
   );
 }
+  

@@ -5,6 +5,7 @@ import Invoice from '@/models/Invoice';
 import Transaction from '@/models/Transaction';
 import { getAuthUser } from '@/lib/auth';
 import { generateInvoiceNumber, generateTransactionNumber } from '@/lib/numberGenerator';
+import { handleApiError } from '@/lib/errorHandler';
 
 // POST create invoice from order
 export async function POST(request, { params }) {
@@ -162,10 +163,10 @@ export async function POST(request, { params }) {
       { status: 201 }
     );
   } catch (error) {
-    console.error('Create invoice error:', error);
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to create invoice');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }

@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Warehouse from '@/models/Warehouse';
 import User from '@/models/User';
 import { getAuthUser } from '@/lib/auth';
+import { handleApiError } from '@/lib/errorHandler';
 
 // GET all warehouses
 export async function GET(request) {
@@ -36,9 +37,10 @@ export async function GET(request) {
       warehouses,
     });
   } catch (error) {
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to fetch warehouses');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }
@@ -114,9 +116,10 @@ export async function POST(request) {
       { status: 201 }
     );
   } catch (error) {
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to create warehouse');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }

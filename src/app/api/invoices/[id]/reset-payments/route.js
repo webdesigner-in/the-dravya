@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Invoice from '@/models/Invoice';
 import Order from '@/models/Order';
 import { getAuthUser } from '@/lib/auth';
+import { handleApiError } from '@/lib/errorHandler';
 
 // POST reset all payments on invoice
 export async function POST(request, { params }) {
@@ -88,10 +89,10 @@ export async function POST(request, { params }) {
       { status: 200 }
     );
   } catch (error) {
-    console.error('Reset payments error:', error);
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to reset payments');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }

@@ -4,6 +4,7 @@ import Invoice from '@/models/Invoice';
 import Customer from '@/models/Customer';
 import Order from '@/models/Order';
 import { getAuthUser } from '@/lib/auth';
+import { handleApiError } from '@/lib/errorHandler';
 
 // POST generate WhatsApp share link
 export async function POST(request, { params }) {
@@ -71,10 +72,10 @@ export async function POST(request, { params }) {
       phone,
     });
   } catch (error) {
-    console.error('Generate WhatsApp link error:', error);
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to generate WhatsApp link');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }

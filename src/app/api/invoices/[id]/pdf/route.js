@@ -5,6 +5,7 @@ import Customer from '@/models/Customer';
 import Order from '@/models/Order';
 import Product from '@/models/Product';
 import { getAuthUser } from '@/lib/auth';
+import { handleApiError } from '@/lib/errorHandler';
 
 // GET generate PDF
 export async function GET(request, { params }) {
@@ -44,10 +45,10 @@ export async function GET(request, { params }) {
       },
     });
   } catch (error) {
-    console.error('Generate PDF error:', error);
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to generate PDF');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }

@@ -48,14 +48,13 @@ export default function ProductsPage() {
   const router = useRouter();
   const isAdmin = useAuthStore((state) => state.isAdmin());
   const [products, setProducts] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [productsLoaded, setProductsLoaded] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState(null);
   const [editingProduct, setEditingProduct] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const hasShownAccessDenied = React.useRef(false);
+  const hasShownAccessDenied = useRef(false);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -97,10 +96,10 @@ export default function ProductsPage() {
   }, [isAdmin, router]);
 
   useEffect(() => {
-    if (isAdmin && productsLoaded) {
+    if (isAdmin) {
       fetchProducts();
     }
-  }, [isAdmin, productsLoaded]);
+  }, [isAdmin]);
 
   const resetForm = () => {
     setFormData({
@@ -470,23 +469,11 @@ export default function ProductsPage() {
         <CardHeader>
           <CardTitle>All Products</CardTitle>
           <CardDescription>
-            {productsLoaded ? "View and manage your water product inventory" : "Click 'Load Products' to view products"}
+            View and manage your water product inventory
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {!productsLoaded ? (
-            <div className="text-center py-12">
-              <Package className="mx-auto h-16 w-16 text-gray-400 mb-4" />
-              <p className="text-lg font-medium mb-2">Products Not Loaded</p>
-              <p className="text-muted-foreground mb-6">
-                Click the button below to load products data
-              </p>
-              <Button onClick={() => setProductsLoaded(true)} size="lg">
-                <Package className="mr-2 h-5 w-5" />
-                Load Products
-              </Button>
-            </div>
-          ) : isLoading ? (
+          {isLoading ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
             </div>

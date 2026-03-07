@@ -5,6 +5,7 @@ import Order from '@/models/Order';
 import Transaction from '@/models/Transaction';
 import { getAuthUser } from '@/lib/auth';
 import { generateTransactionNumber } from '@/lib/numberGenerator';
+import { handleApiError } from '@/lib/errorHandler';
 
 // POST record payment on invoice
 export async function POST(request, { params }) {
@@ -147,10 +148,10 @@ export async function POST(request, { params }) {
       { status: 200 }
     );
   } catch (error) {
-    console.error('Record payment error:', error);
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to record payment');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }

@@ -5,6 +5,7 @@ import Customer from '@/models/Customer';
 import Product from '@/models/Product';
 import Invoice from '@/models/Invoice';
 import { getAuthUser } from '@/lib/auth';
+import { handleApiError } from '@/lib/errorHandler';
 
 // GET analytics data
 export async function GET(request) {
@@ -232,9 +233,10 @@ export async function GET(request) {
       range,
     });
   } catch (error) {
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to fetch analytics data');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Customer from '@/models/Customer';
 import { getAuthUser } from '@/lib/auth';
+import { handleApiError } from '@/lib/errorHandler';
 
 // GET single customer
 export async function GET(request, { params }) {
@@ -36,10 +37,10 @@ export async function GET(request, { params }) {
       customer,
     });
   } catch (error) {
-    console.error('Get customer error:', error);
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to fetch customer');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }
@@ -112,9 +113,10 @@ export async function PUT(request, { params }) {
       customer,
     });
   } catch (error) {
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to update customer');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }
@@ -157,10 +159,10 @@ export async function DELETE(request, { params }) {
       message: 'Customer deleted successfully',
     });
   } catch (error) {
-    console.error('Delete customer error:', error);
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to delete customer');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }

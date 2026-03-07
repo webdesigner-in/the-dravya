@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import { getAuthUser } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
+import { handleApiError } from '@/lib/errorHandler';
 
 export async function GET(request, { params }) {
   let authUser;
@@ -41,9 +42,10 @@ export async function GET(request, { params }) {
       },
     });
   } catch (error) {
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to fetch user');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }
@@ -129,9 +131,10 @@ export async function PUT(request, { params }) {
       },
     });
   } catch (error) {
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to update user');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }
@@ -174,9 +177,10 @@ export async function DELETE(request, { params }) {
       message: 'User deleted successfully',
     });
   } catch (error) {
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to delete user');
     return NextResponse.json(
-      { error: 'Something went wrong' },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Order from '@/models/Order';
 import { getAuthUser } from '@/lib/auth';
+import { handleApiError } from '@/lib/errorHandler';
 
 // GET single order
 export async function GET(request, { params }) {
@@ -182,12 +183,10 @@ export async function PUT(request, { params }) {
       order,
     });
   } catch (error) {
+    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to update order');
     return NextResponse.json(
-      { 
-        error: error.message || 'Failed to update order',
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-      },
-      { status: 500 }
+      { error: errorMessage, details },
+      { status: statusCode }
     );
   }
 }
