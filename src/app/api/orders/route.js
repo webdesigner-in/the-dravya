@@ -147,28 +147,49 @@ export async function GET(request) {
       sortOrder = { deliveryDate: -1, createdAt: -1 }; // Sort by delivery date first, then creation date
     }
 
+    // Log filter for debugging (only in development)
+    if (process.env.NODE_ENV === 'development') {
+      logger.info('Orders filter:', JSON.stringify(filter, null, 2));
+    }
+
     // Execute queries in parallel for better performance
-    const [orders, totalOrders] = await Promise.all([
-      Order.find(filter)
-        .select('orderNumber orderType customer guestInfo items totalAmount discount tax finalAmount status paymentStatus paidAmount paymentMethod deliveryDate notes invoice createdAt')
-        .populate('customer', 'name phone email address')
-        .populate('items.product', 'name sku size bottlesPerCarton')
-        .populate('createdBy', 'name email')
-        .populate('assignedTo', 'name email')
-        .populate({
-          path: 'invoice',
-          select: 'invoiceNumber status paidAmount balanceAmount totalAmount paymentHistory',
-          populate: {
-            path: 'paymentHistory.recordedBy',
-            select: 'name'
-          }
-        })
-        .sort(sortOrder)
-        .skip(skip)
-        .limit(limit)
-        .lean(), // Use lean() for better performance
-      Order.countDocuments(filter)
-    ]);
+    let orders, totalOrders;
+    
+    try {
+      // Validate filter object before querying
+      if (filter.$and && (!Array.isArray(filter.$and) || filter.$and.length === 0)) {
+        delete filter.$and;
+      }
+      if (filter.$or && (!Array.isArray(filter.$or) || filter.$or.length === 0)) {
+        delete filter.$or;
+      }
+
+      [orders, totalOrders] = await Promise.all([
+        Order.find(filter)
+          .select('orderNumber orderType customer guestInfo items totalAmount discount tax finalAmount status paymentStatus paidAmount paymentMethod deliveryDate notes invoice createdAt')
+          .populate('customer', 'name phone email address')
+          .populate('items.product', 'name sku size bottlesPerCarton')
+          .populate('createdBy', 'name email')
+          .populate('assignedTo', 'name email')
+          .populate({
+            path: 'invoice',
+            select: 'invoiceNumber status paidAmount balanceAmount totalAmount paymentHistory',
+            populate: {
+              path: 'paymentHistory.recordedBy',
+              select: 'name'
+            }
+          })
+          .sort(sortOrder)
+          .skip(skip)
+          .limit(limit)
+          .lean(), // Use lean() for better performance
+        Order.countDocuments(filter)
+      ]);
+    } catch (queryError) {
+      logger.error('MongoDB query error:', queryError);
+      logger.error('Filter that caused error:', JSON.stringify(filter, null, 2));
+      throw new Error(`Database query failed: ${queryError.message}`);
+    }
 
     const totalPages = Math.ceil(totalOrders / limit);
 
@@ -194,11 +215,15 @@ export async function GET(request) {
   } catch (error) {
     logger.error('Get orders error', error);
     
-    // Return more specific error message
+    // Return more specific error message with stack trace in development
     return NextResponse.json(
       { 
         error: 'Failed to fetch orders',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+        message: error.message,
+        details: process.env.NODE_ENV === 'development' ? {
+          stack: error.stack,
+          filter: JSON.stringify(filter || {}),
+        } : undefined
       },
       { status: 500 }
     );
