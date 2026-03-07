@@ -154,6 +154,13 @@ OrderSchema.index({ createdAt: -1 });
 OrderSchema.index({ createdBy: 1, paymentStatus: 1, createdAt: -1 });
 OrderSchema.index({ customer: 1, paymentStatus: 1, createdAt: -1 });
 
+// NEW: Indexes for guest order search performance
+OrderSchema.index({ 'guestInfo.name': 1 });
+OrderSchema.index({ 'guestInfo.phone': 1 });
+
+// NEW: Compound index for delivery date queries
+OrderSchema.index({ deliveryDate: 1, createdAt: -1 });
+
 // Delete the model if it exists to force reload with new schema
 if (mongoose.models.Order) {
   delete mongoose.models.Order;

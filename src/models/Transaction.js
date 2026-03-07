@@ -100,9 +100,4 @@ TransactionSchema.index({ customer: 1, type: 1, date: -1 });
 // Text index for search
 TransactionSchema.index({ description: 'text', reference: 'text' });
 
-// Delete the model if it exists to force reload with new schema
-if (mongoose.models.Transaction) {
-  delete mongoose.models.Transaction;
-}
-
-export default mongoose.model('Transaction', TransactionSchema);
+export default mongoose.models.Transaction || mongoose.model('Transaction', TransactionSchema);

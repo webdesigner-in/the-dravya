@@ -25,63 +25,110 @@ export async function GET(request) {
     const limit = parseInt(searchParams.get('limit')) || 20;
     const isAdmin = authUser.role === 'admin';
 
-    // Get all customers (shared)
-    const customers = await Customer.find({}).sort({ name: 1 });
+    // Use aggregation pipeline to fetch all data in ONE query (fixes N+1 problem)
+    const mongoose = await import('mongoose');
+    
+    const matchStage = isAdmin 
+      ? {} 
+      : { createdBy: new mongoose.default.Types.ObjectId(authUser.userId) };
 
-    // Build ledger for each customer based on user's orders (or all for admin)
-    const ledger = [];
+    const ledgerData = await Order.aggregate([
+      {
+        $match: matchStage
+      },
+      {
+        $group: {
+          _id: '$customer',
+          totalOrders: { $sum: 1 },
+          totalAmount: { $sum: '$finalAmount' },
+          paidAmount: { $sum: '$paidAmount' },
+          deliveredUnpaidOrders: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$status', 'delivered'] },
+                    { $in: ['$paymentStatus', ['unpaid', 'partial']] }
+                  ]
+                },
+                1,
+                0
+              ]
+            }
+          },
+          deliveredTotal: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$status', 'delivered'] },
+                    { $in: ['$paymentStatus', ['unpaid', 'partial']] }
+                  ]
+                },
+                '$finalAmount',
+                0
+              ]
+            }
+          },
+          deliveredPaid: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$status', 'delivered'] },
+                    { $in: ['$paymentStatus', ['unpaid', 'partial']] }
+                  ]
+                },
+                '$paidAmount',
+                0
+              ]
+            }
+          }
+        }
+      },
+      {
+        $lookup: {
+          from: 'customers',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'customerData'
+        }
+      },
+      {
+        $unwind: '$customerData'
+      },
+      {
+        $project: {
+          customer: {
+            _id: '$customerData._id',
+            name: '$customerData.name',
+            phone: '$customerData.phone',
+            email: '$customerData.email'
+          },
+          totalOrders: 1,
+          deliveredUnpaidOrders: 1,
+          totalAmount: 1,
+          paidAmount: 1,
+          dueAmount: { $subtract: ['$deliveredTotal', '$deliveredPaid'] }
+        }
+      },
+      {
+        $sort: { dueAmount: -1 }
+      }
+    ]);
+
+    const ledger = ledgerData;
+    
+    // Calculate totals
     let totalRevenue = 0;
     let totalPaid = 0;
     let totalDue = 0;
-
-    for (const customer of customers) {
-      // Get ALL orders for this customer - admin sees all, others see only their own
-      const orderFilter = { 
-        customer: customer._id
-      };
-      if (!isAdmin) {
-        orderFilter.createdBy = authUser.userId;
-      }
-      
-      const allOrders = await Order.find(orderFilter);
-
-      if (allOrders.length === 0) continue; // Skip customers with no orders
-
-      // Calculate totals from ALL orders
-      const customerTotal = allOrders.reduce((sum, order) => sum + (order.finalAmount || 0), 0);
-      const customerPaid = allOrders.reduce((sum, order) => sum + (order.paidAmount || 0), 0);
-      
-      // Calculate due amount only from DELIVERED orders with unpaid/partial status
-      const deliveredUnpaidOrders = allOrders.filter(order => 
-        order.status === 'delivered' && 
-        (order.paymentStatus === 'unpaid' || order.paymentStatus === 'partial')
-      );
-      
-      const deliveredTotal = deliveredUnpaidOrders.reduce((sum, order) => sum + (order.finalAmount || 0), 0);
-      const deliveredPaid = deliveredUnpaidOrders.reduce((sum, order) => sum + (order.paidAmount || 0), 0);
-      const customerDue = deliveredTotal - deliveredPaid;
-
-      ledger.push({
-        customer: {
-          _id: customer._id,
-          name: customer.name,
-          phone: customer.phone,
-          email: customer.email,
-        },
-        totalOrders: allOrders.length,
-        deliveredUnpaidOrders: deliveredUnpaidOrders.length,
-        totalAmount: customerTotal,
-        paidAmount: customerPaid,
-        dueAmount: customerDue, // Only from delivered unpaid orders
-      });
-
-      totalRevenue += customerTotal;
-      totalPaid += customerPaid;
-      totalDue += customerDue;
-    }
-
-    // Sort by due amount (highest first)
-    ledger.sort((a, b) => b.dueAmount - a.dueAmount);
+    
+    ledger.forEach(item => {
+      totalRevenue += item.totalAmount || 0;
+      totalPaid += item.paidAmount || 0;
+      totalDue += item.dueAmount || 0;
+    });
 
     // Only send summary to admins
     const summary = isAdmin ? {

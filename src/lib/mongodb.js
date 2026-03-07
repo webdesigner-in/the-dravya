@@ -20,8 +20,8 @@ async function connectDB() {
   if (!cached.promise) {
     const opts = {
       bufferCommands: false,
-      maxPoolSize: 10,
-      minPoolSize: 2,
+      maxPoolSize: 3,  // Reduced from 10 for better Vercel serverless performance
+      minPoolSize: 1,  // Reduced from 2
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
     };
@@ -37,8 +37,6 @@ async function connectDB() {
     cached.promise = null;
     throw e;
   }
-
-  return cached.conn;
 
   return cached.conn;
 }

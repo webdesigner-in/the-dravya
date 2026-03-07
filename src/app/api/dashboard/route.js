@@ -6,6 +6,7 @@ import Product from '@/models/Product';
 import Invoice from '@/models/Invoice';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
+import cache, { CACHE_TTL } from '@/lib/cache';
 
 // GET dashboard data
 export async function GET(request) {
@@ -21,6 +22,21 @@ export async function GET(request) {
     }
 
     await connectDB();
+
+    // Check cache first
+    const cacheKey = `dashboard_${authUser.userId}_${authUser.role}`;
+    const cachedData = cache.get(cacheKey);
+    
+    if (cachedData) {
+      return NextResponse.json(cachedData, {
+        headers: {
+          'X-Cache': 'HIT',
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      });
+    }
 
     // Get dates - Use UTC to avoid timezone issues
     const now = new Date();
@@ -227,11 +243,17 @@ export async function GET(request) {
       })),
     };
 
-    return NextResponse.json({
+    const responseData = {
       success: true,
       dashboard,
-    }, {
+    };
+
+    // Cache the result for 5 minutes
+    cache.set(cacheKey, responseData, CACHE_TTL.DASHBOARD);
+
+    return NextResponse.json(responseData, {
       headers: {
+        'X-Cache': 'MISS',
         'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0',

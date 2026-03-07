@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Product from '@/models/Product';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
+import cache, { CACHE_TTL } from '@/lib/cache';
 
 // GET all products
 export async function GET(request) {
@@ -23,15 +24,36 @@ export async function GET(request) {
     const category = searchParams.get('category');
     const isActive = searchParams.get('isActive');
 
+    // Create cache key based on filters
+    const cacheKey = `products_${category || 'all'}_${isActive || 'all'}`;
+    const cachedData = cache.get(cacheKey);
+    
+    if (cachedData) {
+      return NextResponse.json(cachedData, {
+        headers: {
+          'X-Cache': 'HIT',
+        },
+      });
+    }
+
     const filter = {};
     if (category) filter.category = category;
     if (isActive !== null) filter.isActive = isActive === 'true';
 
     const products = await Product.find(filter).sort({ createdAt: -1 });
 
-    return NextResponse.json({
+    const responseData = {
       success: true,
       products,
+    };
+
+    // Cache for 10 minutes (products don't change frequently)
+    cache.set(cacheKey, responseData, CACHE_TTL.PRODUCTS);
+
+    return NextResponse.json(responseData, {
+      headers: {
+        'X-Cache': 'MISS',
+      },
     });
   } catch (error) {
     const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to fetch products');
@@ -90,6 +112,12 @@ export async function POST(request) {
       minStockLevel: minStockLevel || 10,
       image,
     });
+
+    // Invalidate products cache
+    cache.delete(`products_all_all`);
+    cache.delete(`products_${category}_all`);
+    cache.delete(`products_all_true`);
+    cache.delete(`products_${category}_true`);
 
     return NextResponse.json({
       success: true,

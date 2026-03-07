@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Customer from '@/models/Customer';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
+import cache from '@/lib/cache';
 
 // GET single customer
 export async function GET(request, { params }) {
@@ -108,6 +109,19 @@ export async function PUT(request, { params }) {
       );
     }
 
+    // Invalidate customers cache
+    const customerTypesToClear = ['all', customer.customerType];
+    const activeStatesToClear = ['all', 'true', 'false'];
+    
+    customerTypesToClear.forEach(type => {
+      activeStatesToClear.forEach(active => {
+        for (let page = 1; page <= 10; page++) {
+          cache.delete(`customers_${type}_${active}_${page}_20`);
+          cache.delete(`customers_${type}_${active}_${page}_50`);
+        }
+      });
+    });
+
     return NextResponse.json({
       success: true,
       customer,
@@ -153,6 +167,19 @@ export async function DELETE(request, { params }) {
         { status: 404 }
       );
     }
+
+    // Invalidate customers cache
+    const customerTypesToClear = ['all', customer.customerType];
+    const activeStatesToClear = ['all', 'true', 'false'];
+    
+    customerTypesToClear.forEach(type => {
+      activeStatesToClear.forEach(active => {
+        for (let page = 1; page <= 10; page++) {
+          cache.delete(`customers_${type}_${active}_${page}_20`);
+          cache.delete(`customers_${type}_${active}_${page}_50`);
+        }
+      });
+    });
 
     return NextResponse.json({
       success: true,

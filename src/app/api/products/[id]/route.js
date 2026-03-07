@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Product from '@/models/Product';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
+import cache from '@/lib/cache';
 
 // GET single product
 export async function GET(request, { params }) {
@@ -73,6 +74,14 @@ export async function PUT(request, { params }) {
       );
     }
 
+    // Invalidate products cache
+    cache.delete(`products_all_all`);
+    cache.delete(`products_${product.category}_all`);
+    cache.delete(`products_all_true`);
+    cache.delete(`products_${product.category}_true`);
+    cache.delete(`products_all_false`);
+    cache.delete(`products_${product.category}_false`);
+
     return NextResponse.json({
       success: true,
       product,
@@ -110,6 +119,14 @@ export async function DELETE(request, { params }) {
         { status: 404 }
       );
     }
+
+    // Invalidate products cache
+    cache.delete(`products_all_all`);
+    cache.delete(`products_${product.category}_all`);
+    cache.delete(`products_all_true`);
+    cache.delete(`products_${product.category}_true`);
+    cache.delete(`products_all_false`);
+    cache.delete(`products_${product.category}_false`);
 
     return NextResponse.json({
       success: true,

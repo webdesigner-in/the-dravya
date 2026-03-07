@@ -4,6 +4,7 @@ import Customer from '@/models/Customer';
 import { getAuthUser } from '@/lib/auth';
 import { errorResponse, successResponse, parsePagination, buildPaginationResponse } from '@/lib/apiHelpers';
 import { createLogger } from '@/lib/logger';
+import cache, { CACHE_TTL } from '@/lib/cache';
 
 const logger = createLogger('CustomersAPI');
 
@@ -48,6 +49,26 @@ export async function GET(request) {
     // Both admins and distributors can see all customers
     // No role-based filtering for customers
 
+    // Check cache only if no search (search results shouldn't be cached)
+    let cachedData = null;
+    let cacheKey = null;
+    
+    if (!search || !search.trim()) {
+      cacheKey = `customers_${customerType || 'all'}_${isActive || 'all'}_${page}_${limit}`;
+      cachedData = cache.get(cacheKey);
+      
+      if (cachedData) {
+        return NextResponse.json({
+          ...cachedData,
+          cached: true,
+        }, {
+          headers: {
+            'X-Cache': 'HIT',
+          },
+        });
+      }
+    }
+
     // Use lean() for better performance and limit fields
     const [customers, totalCustomers] = await Promise.all([
       Customer.find(filter)
@@ -64,10 +85,21 @@ export async function GET(request) {
 
     const response = buildPaginationResponse(customers, totalCustomers, page, limit);
     
-    return NextResponse.json({
+    const responseData = {
       success: true,
       customers: response.items,
       pagination: response.pagination
+    };
+
+    // Cache for 5 minutes if no search
+    if (cacheKey) {
+      cache.set(cacheKey, responseData, CACHE_TTL.CUSTOMERS);
+    }
+
+    return NextResponse.json(responseData, {
+      headers: {
+        'X-Cache': cacheKey ? 'MISS' : 'SKIP',
+      },
     });
   } catch (error) {
     logger.error('Get customers error', error);
@@ -147,6 +179,20 @@ export async function POST(request) {
     const populatedCustomer = await Customer.findById(customer._id)
       .populate('assignedDistributor', 'name email')
       .lean();
+
+    // Invalidate customers cache
+    const customerTypesToClear = ['all', customerData.customerType];
+    const activeStatesToClear = ['all', 'true'];
+    
+    customerTypesToClear.forEach(type => {
+      activeStatesToClear.forEach(active => {
+        // Clear all pages for this combination
+        for (let page = 1; page <= 10; page++) {
+          cache.delete(`customers_${type}_${active}_${page}_20`);
+          cache.delete(`customers_${type}_${active}_${page}_50`);
+        }
+      });
+    });
 
     // logger.info('Customer created', { customerId: customer._id, userId: authUser.userId });
 

@@ -1,101 +1,110 @@
 /**
  * Simple in-memory cache for API responses
- * In production, consider using Redis or similar
+ * Reduces database load by caching frequently accessed data
  */
 
-class Cache {
+class SimpleCache {
   constructor() {
     this.cache = new Map();
-    this.timestamps = new Map();
+    this.timers = new Map();
   }
 
-  set(key, value, ttl = 300000) { // Default 5 minutes
-    this.cache.set(key, value);
-    this.timestamps.set(key, Date.now() + ttl);
-  }
-
+  /**
+   * Get cached data if it exists and is not expired
+   * @param {string} key - Cache key
+   * @returns {any|null} - Cached data or null if not found/expired
+   */
   get(key) {
-    const timestamp = this.timestamps.get(key);
-    
-    if (!timestamp || Date.now() > timestamp) {
+    const cached = this.cache.get(key);
+    if (!cached) return null;
+
+    const now = Date.now();
+    if (now - cached.timestamp > cached.ttl) {
+      // Expired - remove from cache
       this.delete(key);
       return null;
     }
-    
-    return this.cache.get(key);
+
+    return cached.data;
   }
 
+  /**
+   * Set data in cache with TTL
+   * @param {string} key - Cache key
+   * @param {any} data - Data to cache
+   * @param {number} ttl - Time to live in milliseconds
+   */
+  set(key, data, ttl) {
+    // Clear existing timer if any
+    if (this.timers.has(key)) {
+      clearTimeout(this.timers.get(key));
+    }
+
+    // Store data
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now(),
+      ttl,
+    });
+
+    // Set auto-cleanup timer
+    const timer = setTimeout(() => {
+      this.delete(key);
+    }, ttl);
+
+    this.timers.set(key, timer);
+  }
+
+  /**
+   * Delete cached data
+   * @param {string} key - Cache key
+   */
   delete(key) {
     this.cache.delete(key);
-    this.timestamps.delete(key);
-  }
-
-  clear() {
-    this.cache.clear();
-    this.timestamps.clear();
-  }
-
-  has(key) {
-    const timestamp = this.timestamps.get(key);
     
-    if (!timestamp || Date.now() > timestamp) {
-      this.delete(key);
-      return false;
+    if (this.timers.has(key)) {
+      clearTimeout(this.timers.get(key));
+      this.timers.delete(key);
+    }
+  }
+
+  /**
+   * Clear all cached data
+   */
+  clear() {
+    // Clear all timers
+    for (const timer of this.timers.values()) {
+      clearTimeout(timer);
     }
     
-    return this.cache.has(key);
+    this.cache.clear();
+    this.timers.clear();
+  }
+
+  /**
+   * Get cache statistics
+   */
+  getStats() {
+    return {
+      size: this.cache.size,
+      keys: Array.from(this.cache.keys()),
+    };
   }
 }
 
-// Global cache instance
-const cache = new Cache();
+// Create singleton instance
+const cache = new SimpleCache();
+
+// Cache TTL constants (in milliseconds)
+export const CACHE_TTL = {
+  DASHBOARD: 5 * 60 * 1000,      // 5 minutes
+  PRODUCTS: 10 * 60 * 1000,      // 10 minutes
+  CUSTOMERS: 5 * 60 * 1000,      // 5 minutes
+  ANALYTICS: 15 * 60 * 1000,     // 15 minutes
+  REPORTS: 10 * 60 * 1000,       // 10 minutes
+  SHORT: 2 * 60 * 1000,          // 2 minutes
+  MEDIUM: 5 * 60 * 1000,         // 5 minutes
+  LONG: 15 * 60 * 1000,          // 15 minutes
+};
 
 export default cache;
-
-/**
- * Cache decorator for API routes
- */
-export function withCache(handler, options = {}) {
-  const { ttl = 300000, keyGenerator } = options;
-
-  return async (request, context) => {
-    const cacheKey = keyGenerator 
-      ? keyGenerator(request, context)
-      : request.url;
-
-    // Check cache
-    const cached = cache.get(cacheKey);
-    if (cached) {
-      return new Response(JSON.stringify(cached), {
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Cache': 'HIT',
-        },
-      });
-    }
-
-    // Execute handler
-    const response = await handler(request, context);
-    
-    // Cache successful responses
-    if (response.ok) {
-      const data = await response.clone().json();
-      cache.set(cacheKey, data, ttl);
-    }
-
-    return response;
-  };
-}
-
-/**
- * Invalidate cache by pattern
- */
-export function invalidateCache(pattern) {
-  const keys = Array.from(cache.cache.keys());
-  
-  keys.forEach(key => {
-    if (key.includes(pattern)) {
-      cache.delete(key);
-    }
-  });
-}
