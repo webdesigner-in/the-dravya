@@ -5,6 +5,10 @@ import Customer from '@/models/Customer';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
 
+// Configure route for production
+export const maxDuration = 30; // Maximum execution time in seconds
+export const dynamic = 'force-dynamic'; // Disable caching
+
 // GET customer ledger report
 export async function GET(request) {
   let authUser;
@@ -118,7 +122,7 @@ export async function GET(request) {
       {
         $sort: { dueAmount: -1 }
       }
-    ]);
+    ], { maxTimeMS: 25000 }); // Add 25 second timeout as option
 
     const ledger = ledgerData;
     

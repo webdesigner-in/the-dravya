@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
+import mongoose from 'mongoose';
 import Order from '@/models/Order';
 import Product from '@/models/Product';
 import Customer from '@/models/Customer';
@@ -9,6 +10,10 @@ import { getAuthUser } from '@/lib/auth';
 import { generateOrderNumber } from '@/lib/numberGenerator';
 import { errorResponse, parsePagination } from '@/lib/apiHelpers';
 import { createLogger } from '@/lib/logger';
+
+// Configure route for production
+export const maxDuration = 30; // Maximum execution time in seconds
+export const dynamic = 'force-dynamic'; // Disable caching
 
 const logger = createLogger('OrdersAPI');
 
@@ -26,6 +31,11 @@ export async function GET(request) {
     }
 
     await connectDB();
+
+    // Verify connection is ready
+    if (mongoose.connection.readyState !== 1) {
+      throw new Error('Database connection not ready');
+    }
 
     const { searchParams } = new URL(request.url);
     const customerId = searchParams.get('customer');
@@ -167,27 +177,31 @@ export async function GET(request) {
       [orders, totalOrders] = await Promise.all([
         Order.find(filter)
           .select('orderNumber orderType customer guestInfo items totalAmount discount tax finalAmount status paymentStatus paidAmount paymentMethod deliveryDate notes invoice createdAt')
-          .populate('customer', 'name phone email address')
-          .populate('items.product', 'name sku size bottlesPerCarton')
-          .populate('createdBy', 'name email')
-          .populate('assignedTo', 'name email')
-          .populate({
-            path: 'invoice',
-            select: 'invoiceNumber status paidAmount balanceAmount totalAmount paymentHistory',
-            populate: {
-              path: 'paymentHistory.recordedBy',
-              select: 'name'
-            }
-          })
+          .populate('customer', 'name phone')
+          .populate('items.product', 'name sku')
+          .populate('createdBy', 'name')
+          .populate('assignedTo', 'name')
+          .populate('invoice', 'invoiceNumber status paidAmount balanceAmount')
           .sort(sortOrder)
           .skip(skip)
           .limit(limit)
-          .lean(), // Use lean() for better performance
-        Order.countDocuments(filter)
+          .lean() // Use lean() for better performance
+          .maxTimeMS(25000), // Add query timeout for production
+        Order.countDocuments(filter).maxTimeMS(10000)
       ]);
     } catch (queryError) {
       logger.error('MongoDB query error:', queryError);
       logger.error('Filter that caused error:', JSON.stringify(filter, null, 2));
+      
+      // Check if it's a timeout error
+      if (queryError.name === 'MongooseError' && queryError.message.includes('buffering timed out')) {
+        throw new Error('Database connection timeout. Please try again.');
+      }
+      
+      if (queryError.name === 'MongoServerError' && queryError.code === 50) {
+        throw new Error('Query took too long to execute. Please refine your search.');
+      }
+      
       throw new Error(`Database query failed: ${queryError.message}`);
     }
 
