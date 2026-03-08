@@ -8,6 +8,9 @@ import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
 
 // GET analytics data
+export const maxDuration = 30; // Maximum execution time
+export const dynamic = 'force-dynamic'; // Disable caching
+
 export async function GET(request) {
   let authUser;
   try {
@@ -72,12 +75,25 @@ export async function GET(request) {
         break;
     }
 
-    // Fetch all necessary data
+    // Fetch all necessary data with timeouts and lean queries
     const [orders, customers, products, invoices] = await Promise.all([
-      Order.find(dateFilter).populate('customer', 'name').populate('items.product', 'name size'),
-      Customer.find({}),
-      Product.find({}),
-      Invoice.find(dateFilter),
+      Order.find(dateFilter)
+        .populate('customer', 'name')
+        .populate('items.product', 'name size')
+        .lean()
+        .maxTimeMS(10000),
+      Customer.find({})
+        .select('_id name')
+        .lean()
+        .maxTimeMS(5000),
+      Product.find({})
+        .select('_id name size stock reorderLevel')
+        .lean()
+        .maxTimeMS(5000),
+      Invoice.find(dateFilter)
+        .select('status dueDate')
+        .lean()
+        .maxTimeMS(5000),
     ]);
 
     // Revenue Metrics

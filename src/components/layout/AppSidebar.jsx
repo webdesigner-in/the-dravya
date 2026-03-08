@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef } from "react";
 import {
   LayoutDashboard,
   Droplets,
@@ -33,7 +34,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/store/authStore";
-import { useRouter } from "next/navigation";
 
 const menuItems = [
   {
@@ -81,6 +81,44 @@ export function AppSidebar() {
   const isAdmin = useAuthStore((state) => state.isAdmin());
   const logout = useAuthStore((state) => state.logout);
   const router = useRouter();
+  const sidebarContentRef = useRef(null);
+
+  // Save and restore sidebar scroll position
+  useEffect(() => {
+    const sidebarContent = sidebarContentRef.current;
+    if (!sidebarContent) return;
+
+    // Restore scroll position on mount
+    const savedScrollPosition = sessionStorage.getItem('sidebarScrollPosition');
+    if (savedScrollPosition) {
+      sidebarContent.scrollTop = parseInt(savedScrollPosition);
+    }
+
+    // Save scroll position on scroll
+    const handleScroll = () => {
+      sessionStorage.setItem('sidebarScrollPosition', sidebarContent.scrollTop.toString());
+    };
+
+    sidebarContent.addEventListener('scroll', handleScroll);
+    
+    return () => {
+      sidebarContent.removeEventListener('scroll', handleScroll);
+    };
+  }, []);
+
+  // Restore scroll position when pathname changes
+  useEffect(() => {
+    const sidebarContent = sidebarContentRef.current;
+    if (!sidebarContent) return;
+
+    const savedScrollPosition = sessionStorage.getItem('sidebarScrollPosition');
+    if (savedScrollPosition) {
+      // Use setTimeout to ensure DOM is ready
+      setTimeout(() => {
+        sidebarContent.scrollTop = parseInt(savedScrollPosition);
+      }, 0);
+    }
+  }, [pathname]);
 
   const handleLogout = async () => {
     await logout();
@@ -99,7 +137,7 @@ export function AppSidebar() {
       
       <Separator />
       
-      <SidebarContent className="py-2">
+      <SidebarContent ref={sidebarContentRef} className="py-2">
         {menuItems.map((group) => (
           <SidebarGroup key={group.title}>
             <SidebarGroupLabel>{group.title}</SidebarGroupLabel>
@@ -111,7 +149,7 @@ export function AppSidebar() {
                       asChild
                       isActive={pathname === item.url}
                     >
-                      <Link href={item.url}>
+                      <Link href={item.url} scroll={false}>
                         <item.icon />
                         <span>{item.title}</span>
                       </Link>
@@ -135,7 +173,7 @@ export function AppSidebar() {
                       asChild
                       isActive={pathname === item.url}
                     >
-                      <Link href={item.url}>
+                      <Link href={item.url} scroll={false}>
                         <item.icon />
                         <span>{item.title}</span>
                       </Link>
