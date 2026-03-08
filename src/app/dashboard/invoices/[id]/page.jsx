@@ -206,7 +206,7 @@ export default function InvoiceDetailPage() {
 
           {/* Items Table */}
           <div className="overflow-x-auto -mx-4 sm:mx-0">
-            <table className="w-full min-w-[500px]">
+            <table className="w-full min-w-125">
               <thead className="border-b-2">
                 <tr className="text-left">
                   <th className="pb-2 px-2 sm:px-0 text-xs sm:text-sm">Item</th>

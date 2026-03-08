@@ -1531,7 +1531,7 @@ export default function OrdersPage() {
                         >
                           {order.paymentStatus}
                         </span>
-                        {order.invoice && (
+                        {order.invoice && order.invoice._id && (
                           <>
                             <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 flex items-center gap-1">
                               <FileText className="h-3 w-3" />
@@ -1597,12 +1597,12 @@ export default function OrdersPage() {
                           </p>
                         </div>
                         {/* Show invoice payment info if invoice exists */}
-                        {order.invoice && (
+                        {order.invoice && order.invoice._id && (
                           <>
                             <div className="col-span-2 sm:col-span-3 pt-2 border-t">
                               <span className="text-muted-foreground block text-xs">Invoice Status:</span>
                               <div className="flex items-center gap-2 mt-1">
-                                <p className="font-medium text-sm">{order.invoice.invoiceNumber}</p>
+                                <p className="font-medium text-sm">{order.invoice.invoiceNumber || 'N/A'}</p>
                                 <Badge className={`text-xs ${
                                   order.invoice.status === 'paid' ? 'bg-green-100 text-green-700' :
                                   order.invoice.status === 'partial' ? 'bg-yellow-100 text-yellow-700' :
@@ -1676,13 +1676,17 @@ export default function OrdersPage() {
                         </Select>
 
                         {/* Invoice Actions */}
-                        {order.invoice ? (
+                        {order.invoice && order.invoice._id ? (
                           <>
                             <Button
                               size="sm"
                               variant="default"
                               onClick={() => {
-                                window.location.href = `/dashboard/invoices/${order.invoice._id}`;
+                                if (order.invoice && order.invoice._id) {
+                                  window.location.href = `/dashboard/invoices/${order.invoice._id}`;
+                                } else {
+                                  toast.error("Invoice ID not found");
+                                }
                               }}
                               className="text-xs h-8"
                             >
