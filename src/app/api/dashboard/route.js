@@ -9,6 +9,9 @@ import { handleApiError } from '@/lib/errorHandler';
 import cache, { CACHE_TTL } from '@/lib/cache';
 
 // GET dashboard data
+export const maxDuration = 30; // Maximum execution time
+export const dynamic = 'force-dynamic'; // Disable caching
+
 export async function GET(request) {
   let authUser;
   try {
@@ -64,7 +67,8 @@ export async function GET(request) {
         .select('orderNumber customer orderType guestInfo finalAmount status createdAt')
         .populate('customer', 'name')
         .limit(50)
-        .lean(),
+        .lean()
+        .maxTimeMS(5000),
       
       // Pending orders - limited to 20
       Order.find({
@@ -75,7 +79,8 @@ export async function GET(request) {
         .populate('customer', 'name')
         .limit(20)
         .sort({ createdAt: -1 })
-        .lean(),
+        .lean()
+        .maxTimeMS(5000),
       
       // Recent deliveries - limited to 10
       Order.find({
@@ -86,10 +91,11 @@ export async function GET(request) {
         .populate('customer', 'name')
         .limit(10)
         .sort({ updatedAt: -1 })
-        .lean(),
+        .lean()
+        .maxTimeMS(5000),
       
       // Customer count only
-      Customer.countDocuments({}),
+      Customer.countDocuments({}).maxTimeMS(3000),
       
       // Low stock products - limited to 10
       Product.find({
@@ -99,7 +105,8 @@ export async function GET(request) {
         .select('name size stock minStockLevel')
         .limit(10)
         .sort({ stock: 1 })
-        .lean(),
+        .lean()
+        .maxTimeMS(3000),
       
       // Overdue invoices - limited to 20
       Invoice.find({
@@ -115,6 +122,7 @@ export async function GET(request) {
         })
         .limit(20)
         .lean()
+        .maxTimeMS(5000)
     ]);
 
     // Filter overdue invoices by user's orders (for non-admin)
