@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Customer from '@/models/Customer';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
+import { retryOperation, delay } from '@/lib/retryHelper';
 import cache from '@/lib/cache';
 
 // GET single customer
@@ -96,18 +97,25 @@ export async function PUT(request, { params }) {
       }
     }
 
-    const customer = await Customer.findByIdAndUpdate(
-      id,
-      { $set: body },
-      { new: true, runValidators: true, returnDocument: 'after' }
-    ).populate('assignedDistributor', 'name email');
+    // Update customer with retry logic
+    const customer = await retryOperation(async () => {
+      const updatedCustomer = await Customer.findByIdAndUpdate(
+        id,
+        { $set: body },
+        { new: true, runValidators: true, returnDocument: 'after' }
+      ).populate('assignedDistributor', 'name email');
 
-    if (!customer) {
-      return NextResponse.json(
-        { error: 'Customer not found' },
-        { status: 404 }
-      );
-    }
+      if (!updatedCustomer) {
+        const error = new Error('Customer not found');
+        error.status = 404;
+        throw error;
+      }
+
+      return updatedCustomer;
+    }, 3, 500);
+
+    // Add small delay to ensure database consistency
+    await delay(300);
 
     // Invalidate customers cache
     const customerTypesToClear = ['all', customer.customerType];

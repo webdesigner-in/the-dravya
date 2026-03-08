@@ -4,6 +4,7 @@ import User from '@/models/User';
 import { getAuthUser } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
 import { handleApiError } from '@/lib/errorHandler';
+import { retryOperation, delay } from '@/lib/retryHelper';
 
 export async function GET(request, { params }) {
   let authUser;
@@ -105,18 +106,25 @@ export async function PUT(request, { params }) {
       updateData.password = hashedPassword;
     }
 
-    const user = await User.findByIdAndUpdate(
-      id,
-      updateData,
-      { returnDocument: 'after', runValidators: true }
-    ).select('-password');
+    // Update user with retry logic
+    const user = await retryOperation(async () => {
+      const updatedUser = await User.findByIdAndUpdate(
+        id,
+        updateData,
+        { returnDocument: 'after', runValidators: true }
+      ).select('-password');
 
-    if (!user) {
-      return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
-      );
-    }
+      if (!updatedUser) {
+        const error = new Error('User not found');
+        error.status = 404;
+        throw error;
+      }
+
+      return updatedUser;
+    }, 3, 500);
+
+    // Add small delay to ensure database consistency
+    await delay(300);
 
     return NextResponse.json({
       success: true,

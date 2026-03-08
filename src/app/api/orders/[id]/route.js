@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Order from '@/models/Order';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
+import { retryOperation, delay } from '@/lib/retryHelper';
 
 // GET single order
 export async function GET(request, { params }) {
@@ -162,25 +163,33 @@ export async function PUT(request, { params }) {
       body.finalAmount = finalAmount;
     }
 
-    const order = await Order.findByIdAndUpdate(
-      id,
-      { $set: body },
-      { returnDocument: 'after', runValidators: true }
-    )
-      .populate('customer', 'name phone email address')
-      .populate('items.product', 'name sku size bottlesPerCarton')
-      .populate('createdBy', 'name email');
+    // Update order with retry logic
+    const order = await retryOperation(async () => {
+      const updatedOrder = await Order.findByIdAndUpdate(
+        id,
+        { $set: body },
+        { returnDocument: 'after', runValidators: true }
+      )
+        .populate('customer', 'name phone email address')
+        .populate('items.product', 'name sku size bottlesPerCarton')
+        .populate('createdBy', 'name email');
 
-    if (!order) {
-      return NextResponse.json(
-        { error: 'Order not found' },
-        { status: 404 }
-      );
-    }
+      if (!updatedOrder) {
+        const error = new Error('Order not found');
+        error.status = 404;
+        throw error;
+      }
+
+      return updatedOrder;
+    }, 3, 500); // 3 retries with 500ms initial delay
+
+    // Add small delay to ensure database consistency
+    await delay(300);
 
     return NextResponse.json({
       success: true,
       order,
+      message: 'Order updated successfully'
     });
   } catch (error) {
     const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to update order');

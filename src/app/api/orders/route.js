@@ -47,17 +47,53 @@ export async function GET(request) {
     if (status) filter.status = status;
     if (paymentStatus) filter.paymentStatus = paymentStatus;
 
-    // Simple search - only on order number
-    if (search) {
-      filter.orderNumber = { $regex: search, $options: 'i' };
+    // Enhanced search - search by order number OR customer name
+    if (search && search.trim()) {
+      try {
+        // Find customers matching the search (with limit to prevent slowdown)
+        const matchingCustomers = await Customer.find({
+          $or: [
+            { name: { $regex: search.trim(), $options: 'i' } },
+            { phone: { $regex: search.trim(), $options: 'i' } }
+          ]
+        })
+        .select('_id')
+        .limit(50)
+        .lean()
+        .maxTimeMS(3000);
+        
+        const customerIds = matchingCustomers.map(c => c._id);
+        
+        // Build search filter
+        if (customerIds.length > 0) {
+          filter.$or = [
+            { orderNumber: { $regex: search.trim(), $options: 'i' } },
+            { customer: { $in: customerIds } },
+            { 'guestInfo.name': { $regex: search.trim(), $options: 'i' } },
+            { 'guestInfo.phone': { $regex: search.trim(), $options: 'i' } }
+          ];
+        } else {
+          // No customers found, search only order number and guest info
+          filter.$or = [
+            { orderNumber: { $regex: search.trim(), $options: 'i' } },
+            { 'guestInfo.name': { $regex: search.trim(), $options: 'i' } },
+            { 'guestInfo.phone': { $regex: search.trim(), $options: 'i' } }
+          ];
+        }
+      } catch (searchError) {
+        console.error('Customer search error:', searchError);
+        // Fallback to simple order number search if customer search fails
+        filter.orderNumber = { $regex: search.trim(), $options: 'i' };
+      }
     }
 
     // Simple query - no complex $or/$and
     const [orders, totalOrders] = await Promise.all([
       Order.find(filter)
-        .select('orderNumber orderType customer guestInfo items totalAmount finalAmount status paymentStatus paidAmount deliveryDate createdAt')
+        .select('orderNumber orderType customer guestInfo items totalAmount finalAmount status paymentStatus paidAmount deliveryDate createdAt invoice')
         .populate('customer', 'name phone')
         .populate('items.product', 'name')
+        .populate('invoice', 'invoiceNumber status balanceAmount paidAmount paymentHistory')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)

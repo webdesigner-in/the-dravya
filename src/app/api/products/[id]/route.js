@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Product from '@/models/Product';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
+import { retryOperation, delay } from '@/lib/retryHelper';
 import cache from '@/lib/cache';
 
 // GET single product
@@ -61,18 +62,25 @@ export async function PUT(request, { params }) {
     const { id } = await params;
     const body = await request.json();
 
-    const product = await Product.findByIdAndUpdate(
-      id,
-      { $set: body },
-      { new: true, runValidators: true, returnDocument: 'after' }
-    );
-
-    if (!product) {
-      return NextResponse.json(
-        { error: 'Product not found' },
-        { status: 404 }
+    // Update product with retry logic
+    const product = await retryOperation(async () => {
+      const updatedProduct = await Product.findByIdAndUpdate(
+        id,
+        { $set: body },
+        { new: true, runValidators: true, returnDocument: 'after' }
       );
-    }
+
+      if (!updatedProduct) {
+        const error = new Error('Product not found');
+        error.status = 404;
+        throw error;
+      }
+
+      return updatedProduct;
+    }, 3, 500);
+
+    // Add small delay to ensure database consistency
+    await delay(300);
 
     // Invalidate products cache
     cache.delete(`products_all_all`);

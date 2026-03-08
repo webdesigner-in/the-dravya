@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import Transaction from '@/models/Transaction';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
+import { retryOperation, delay } from '@/lib/retryHelper';
 
 // GET single transaction
 export async function GET(request, { params }) {
@@ -127,14 +128,28 @@ export async function PUT(request, { params }) {
       updateData.customer = null;
     }
 
-    const updatedTransaction = await Transaction.findByIdAndUpdate(
-      id,
-      updateData,
-      { returnDocument: 'after', runValidators: true }
-    )
-      .populate('customer', 'name phone')
-      .populate('order', 'orderNumber')
-      .populate('createdBy', 'name');
+    // Update transaction with retry logic
+    const updatedTransaction = await retryOperation(async () => {
+      const updated = await Transaction.findByIdAndUpdate(
+        id,
+        updateData,
+        { returnDocument: 'after', runValidators: true }
+      )
+        .populate('customer', 'name phone')
+        .populate('order', 'orderNumber')
+        .populate('createdBy', 'name');
+
+      if (!updated) {
+        const error = new Error('Transaction not found');
+        error.status = 404;
+        throw error;
+      }
+
+      return updated;
+    }, 3, 500);
+
+    // Add small delay to ensure database consistency
+    await delay(300);
 
     return NextResponse.json({
       success: true,

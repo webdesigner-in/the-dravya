@@ -4,6 +4,7 @@ import Warehouse from '@/models/Warehouse';
 import User from '@/models/User';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
+import { retryOperation, delay } from '@/lib/retryHelper';
 
 // GET single warehouse
 export async function GET(request, { params }) {
@@ -67,18 +68,25 @@ export async function PUT(request, { params }) {
       body.manager = undefined;
     }
 
-    const warehouse = await Warehouse.findByIdAndUpdate(
-      id,
-      { $set: body },
-      { returnDocument: 'after', runValidators: true }
-    ).populate('manager', 'name email phone');
+    // Update warehouse with retry logic
+    const warehouse = await retryOperation(async () => {
+      const updatedWarehouse = await Warehouse.findByIdAndUpdate(
+        id,
+        { $set: body },
+        { returnDocument: 'after', runValidators: true }
+      ).populate('manager', 'name email phone');
 
-    if (!warehouse) {
-      return NextResponse.json(
-        { error: 'Warehouse not found' },
-        { status: 404 }
-      );
-    }
+      if (!updatedWarehouse) {
+        const error = new Error('Warehouse not found');
+        error.status = 404;
+        throw error;
+      }
+
+      return updatedWarehouse;
+    }, 3, 500);
+
+    // Add small delay to ensure database consistency
+    await delay(300);
 
     return NextResponse.json({
       success: true,

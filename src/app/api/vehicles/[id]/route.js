@@ -4,6 +4,7 @@ import Vehicle from '@/models/Vehicle';
 import User from '@/models/User';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
+import { retryOperation, delay } from '@/lib/retryHelper';
 
 // PUT update vehicle
 export async function PUT(request, { params }) {
@@ -28,18 +29,25 @@ export async function PUT(request, { params }) {
       body.driver = undefined;
     }
 
-    const vehicle = await Vehicle.findByIdAndUpdate(
-      id,
-      { $set: body },
-      { returnDocument: 'after', runValidators: true }
-    ).populate('driver', 'name phone email');
+    // Update vehicle with retry logic
+    const vehicle = await retryOperation(async () => {
+      const updatedVehicle = await Vehicle.findByIdAndUpdate(
+        id,
+        { $set: body },
+        { returnDocument: 'after', runValidators: true }
+      ).populate('driver', 'name phone email');
 
-    if (!vehicle) {
-      return NextResponse.json(
-        { error: 'Vehicle not found' },
-        { status: 404 }
-      );
-    }
+      if (!updatedVehicle) {
+        const error = new Error('Vehicle not found');
+        error.status = 404;
+        throw error;
+      }
+
+      return updatedVehicle;
+    }, 3, 500);
+
+    // Add small delay to ensure database consistency
+    await delay(300);
 
     return NextResponse.json({
       success: true,

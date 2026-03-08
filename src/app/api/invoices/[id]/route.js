@@ -5,6 +5,7 @@ import Order from '@/models/Order';
 import Product from '@/models/Product';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
+import { retryOperation, delay } from '@/lib/retryHelper';
 
 // GET single invoice
 export async function GET(request, { params }) {
@@ -93,41 +94,47 @@ export async function PUT(request, { params }) {
       );
     }
 
-    // Update fields
-    if (status) invoice.status = status;
-    if (paidAmount !== undefined) {
-      invoice.paidAmount = parseFloat(paidAmount);
-      invoice.balanceAmount = invoice.totalAmount - invoice.paidAmount;
-      
-      // Auto-update status based on payment
-      if (invoice.paidAmount >= invoice.totalAmount) {
-        invoice.status = 'paid';
-      } else if (invoice.paidAmount > 0) {
-        invoice.status = 'partial';
-      }
-    }
-    if (dueDate) invoice.dueDate = dueDate;
-    if (paymentTerms) invoice.paymentTerms = paymentTerms;
-    if (notes !== undefined) invoice.notes = notes;
-    if (terms !== undefined) invoice.terms = terms;
-
-    await invoice.save();
-
-    // Update order payment status if needed
-    if (paidAmount !== undefined) {
-      const order = await Order.findById(invoice.order);
-      if (order) {
-        order.paidAmount = invoice.paidAmount;
+    // Update invoice with retry logic
+    await retryOperation(async () => {
+      // Update fields
+      if (status) invoice.status = status;
+      if (paidAmount !== undefined) {
+        invoice.paidAmount = parseFloat(paidAmount);
+        invoice.balanceAmount = invoice.totalAmount - invoice.paidAmount;
+        
+        // Auto-update status based on payment
         if (invoice.paidAmount >= invoice.totalAmount) {
-          order.paymentStatus = 'paid';
+          invoice.status = 'paid';
         } else if (invoice.paidAmount > 0) {
-          order.paymentStatus = 'partial';
-        } else {
-          order.paymentStatus = 'unpaid';
+          invoice.status = 'partial';
         }
-        await order.save();
       }
-    }
+      if (dueDate) invoice.dueDate = dueDate;
+      if (paymentTerms) invoice.paymentTerms = paymentTerms;
+      if (notes !== undefined) invoice.notes = notes;
+      if (terms !== undefined) invoice.terms = terms;
+
+      await invoice.save();
+
+      // Update order payment status if needed
+      if (paidAmount !== undefined) {
+        const order = await Order.findById(invoice.order);
+        if (order) {
+          order.paidAmount = invoice.paidAmount;
+          if (invoice.paidAmount >= invoice.totalAmount) {
+            order.paymentStatus = 'paid';
+          } else if (invoice.paidAmount > 0) {
+            order.paymentStatus = 'partial';
+          } else {
+            order.paymentStatus = 'unpaid';
+          }
+          await order.save();
+        }
+      }
+    }, 3, 500);
+
+    // Add small delay to ensure database consistency
+    await delay(300);
 
     const updatedInvoice = await Invoice.findById(id)
       .populate('customer', 'name phone email address')

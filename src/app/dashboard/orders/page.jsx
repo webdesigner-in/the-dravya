@@ -262,6 +262,15 @@ export default function OrdersPage() {
     }
   }, [isDialogOpen]);
 
+  // Load products when view order dialog opens (needed for edit mode)
+  useEffect(() => {
+    if (isViewOrderDialogOpen) {
+      if (products.length === 0) {
+        fetchProducts();
+      }
+    }
+  }, [isViewOrderDialogOpen, fetchProducts]);
+
   // Debounce customer search
   useEffect(() => {
     if (!isDialogOpen) return; // Only search when dialog is open
@@ -894,7 +903,7 @@ export default function OrdersPage() {
                       {customerSearchQuery && (
                         <div 
                           id="customer-dropdown"
-                          className="absolute z-50 w-full mt-1 bg-white border rounded-md shadow-lg max-h-[300px] overflow-y-auto"
+                          className="absolute z-50 w-full mt-1 bg-white border rounded-md shadow-lg max-h-75 overflow-y-auto"
                         >
                           {customers.length > 0 ? (
                             customers.map((customer) => (
@@ -971,7 +980,7 @@ export default function OrdersPage() {
                             guestInfo: { ...formData.guestInfo, address: e.target.value },
                           })
                         }
-                        className="text-sm min-h-[60px]"
+                        className="text-sm min-h-15"
                       />
                     </div>
                   </div>
@@ -1002,7 +1011,7 @@ export default function OrdersPage() {
                               <SelectTrigger className="h-10 text-sm">
                                 <SelectValue placeholder="Select product" />
                               </SelectTrigger>
-                              <SelectContent className="max-h-[300px]">
+                              <SelectContent className="max-h-75">
                                 {products.map((product) => (
                                   <SelectItem key={product._id} value={product._id}>
                                     {product.name} - ₹{product.price} ({product.stock}{" "}
@@ -1543,7 +1552,7 @@ export default function OrdersPage() {
                             handleStatusChange(order._id, value)
                           }
                         >
-                          <SelectTrigger className="text-xs h-8 w-auto min-w-[100px]">
+                          <SelectTrigger className="text-xs h-8 w-auto min-w-25">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -1563,7 +1572,7 @@ export default function OrdersPage() {
                           }
                           disabled={!!order.invoice}
                         >
-                          <SelectTrigger className="text-xs h-8 w-auto min-w-[90px]">
+                          <SelectTrigger className="text-xs h-8 w-auto min-w-22.5">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
