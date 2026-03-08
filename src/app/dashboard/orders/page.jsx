@@ -55,6 +55,7 @@ import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { Badge } from "@/components/ui/badge";
+import { getUserFriendlyError } from "@/lib/errorMessages";
 
 export default function OrdersPage() {
   const searchParams = useSearchParams();
@@ -509,7 +510,7 @@ export default function OrdersPage() {
       setIsViewOrderDialogOpen(false);
       fetchOrders();
     } catch (error) {
-      toast.error(error.message);
+      toast.error(getUserFriendlyError(error));
     } finally {
       setIsSubmitting(false);
     }
@@ -632,7 +633,7 @@ export default function OrdersPage() {
       setIsDialogOpen(false);
       fetchOrders();
     } catch (error) {
-      toast.error(error.message);
+      toast.error(getUserFriendlyError(error));
     } finally {
       setIsSubmitting(false);
     }
@@ -653,7 +654,7 @@ export default function OrdersPage() {
       toast.success("Order status updated!");
       fetchOrders();
     } catch (error) {
-      toast.error(error.message);
+      toast.error(getUserFriendlyError(error));
     }
   };
 
@@ -681,7 +682,7 @@ export default function OrdersPage() {
       setOrderToDelete(null);
       fetchOrders();
     } catch (error) {
-      toast.error(error.message);
+      toast.error(getUserFriendlyError(error));
       setIsDeleteDialogOpen(false);
       setOrderToDelete(null);
     }
@@ -740,7 +741,7 @@ export default function OrdersPage() {
       // Refresh orders from server to ensure consistency
       await fetchOrders();
     } catch (error) {
-      toast.error(error.message);
+      toast.error(getUserFriendlyError(error));
     }
   };
 
@@ -810,7 +811,7 @@ export default function OrdersPage() {
       // Refresh orders from server to ensure consistency
       await fetchOrders();
     } catch (error) {
-      toast.error(error.message);
+      toast.error(getUserFriendlyError(error));
     }
   };
 
@@ -854,7 +855,7 @@ export default function OrdersPage() {
       // Refresh orders to show the new invoice
       await fetchOrders();
     } catch (error) {
-      toast.error(error.message);
+      toast.error(getUserFriendlyError(error));
     } finally {
       setIsSubmitting(false);
     }
@@ -2477,7 +2478,7 @@ export default function OrdersPage() {
                   // Refresh orders to show updated invoice status
                   await fetchOrders();
                 } catch (error) {
-                  toast.error(error.message);
+                  toast.error(getUserFriendlyError(error));
                 } finally {
                   setIsSubmitting(false);
                 }
@@ -2597,7 +2598,7 @@ export default function OrdersPage() {
                             
                             await fetchOrders();
                           } catch (error) {
-                            toast.error(error.message);
+                            toast.error(getUserFriendlyError(error));
                           } finally {
                             setIsSubmitting(false);
                           }
@@ -2626,3 +2627,4 @@ export default function OrdersPage() {
     </div>
   );
 }
+
