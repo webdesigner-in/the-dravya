@@ -62,9 +62,11 @@ export default function OrdersPage() {
   const isAdmin = useAuthStore((state) => state.isAdmin());
   
   const [orders, setOrders] = useState([]);
+  const [allLoadedOrders, setAllLoadedOrders] = useState([]); // Cache all loaded orders
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSearchingDB, setIsSearchingDB] = useState(false); // Separate loading state for DB search
   const [ordersLoaded, setOrdersLoaded] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
@@ -151,7 +153,7 @@ export default function OrdersPage() {
   });
 
   // Memoized fetch functions to prevent infinite loops
-  const fetchOrders = useCallback(async () => {
+  const fetchOrders = useCallback(async (appendToCache = false) => {
     try {
       setIsLoading(true);
       let url = "/api/orders?";
@@ -173,8 +175,19 @@ export default function OrdersPage() {
           setPagination(data.pagination);
         }
         
-        // Orders now come with invoice populated from the API
+        // Update displayed orders
         setOrders(ordersData);
+        
+        // Update cache - merge with existing if appending, otherwise replace
+        if (appendToCache) {
+          setAllLoadedOrders(prev => {
+            const existingIds = new Set(prev.map(o => o._id));
+            const newOrders = ordersData.filter(o => !existingIds.has(o._id));
+            return [...prev, ...newOrders];
+          });
+        } else {
+          setAllLoadedOrders(ordersData);
+        }
       } else {
         toast.error("Failed to fetch orders");
       }
@@ -184,6 +197,69 @@ export default function OrdersPage() {
       setIsLoading(false);
     }
   }, [statusFilter, paymentFilter, dateFilter, customerIdFromUrl, searchQuery, sortBy, currentPage]);
+
+  // Client-side search in loaded orders
+  const searchLoadedOrders = useCallback((query) => {
+    if (!query || query.trim() === "") return allLoadedOrders;
+    
+    const lowerQuery = query.toLowerCase().trim();
+    return allLoadedOrders.filter(order => 
+      order.orderNumber?.toLowerCase().includes(lowerQuery) ||
+      order.customer?.name?.toLowerCase().includes(lowerQuery) ||
+      order.customer?.phone?.includes(lowerQuery) ||
+      order.guestInfo?.name?.toLowerCase().includes(lowerQuery) ||
+      order.guestInfo?.phone?.includes(lowerQuery)
+    );
+  }, [allLoadedOrders]);
+
+  // Hybrid search: client-side first, then database
+  const performHybridSearch = useCallback(async (query) => {
+    if (!query || query.trim() === "") {
+      // No search query - show all loaded orders with filters
+      setOrders(allLoadedOrders);
+      return;
+    }
+
+    // Step 1: Search in already loaded orders (instant)
+    const localResults = searchLoadedOrders(query);
+    
+    if (localResults.length > 0) {
+      // Found results in cache - show immediately
+      setOrders(localResults);
+      return;
+    }
+    
+    // Step 2: No local results - search database
+    setIsSearchingDB(true);
+    try {
+      let url = `/api/orders?search=${encodeURIComponent(query)}&limit=20`;
+      if (statusFilter !== "all") url += `&status=${statusFilter}`;
+      if (paymentFilter !== "all") url += `&paymentStatus=${paymentFilter}`;
+      
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        const dbResults = data.orders || [];
+        
+        // Update cache with new results
+        setAllLoadedOrders(prev => {
+          const existingIds = new Set(prev.map(o => o._id));
+          const newOrders = dbResults.filter(o => !existingIds.has(o._id));
+          return [...prev, ...newOrders];
+        });
+        
+        setOrders(dbResults);
+        
+        if (dbResults.length === 0) {
+          toast.info("No orders found matching your search");
+        }
+      }
+    } catch (error) {
+      toast.error("Search failed");
+    } finally {
+      setIsSearchingDB(false);
+    }
+  }, [allLoadedOrders, searchLoadedOrders, statusFilter, paymentFilter]);
 
   const fetchCustomers = useCallback(async (searchTerm = "") => {
     try {
@@ -212,10 +288,13 @@ export default function OrdersPage() {
 
   const fetchProducts = useCallback(async () => {
     try {
-      const response = await fetch("/api/products");
+      // Only fetch active products with stock > 0 for better performance
+      const response = await fetch("/api/products?active=true");
       if (response.ok) {
         const data = await response.json();
-        setProducts(data.products || []);
+        // Filter products with stock > 0 on client side as additional safety
+        const activeProducts = (data.products || []).filter(p => p.stock > 0);
+        setProducts(activeProducts);
       }
     } catch (error) {
       // Error already logged
@@ -244,11 +323,16 @@ export default function OrdersPage() {
   }, [customerIdFromUrl, ordersLoaded]);
 
   // Fetch orders when dependencies change - only if orders have been loaded at least once
+  // Debounce filter changes to reduce API calls
   useEffect(() => {
-    if (ordersLoaded) {
+    if (!ordersLoaded) return;
+    
+    const timer = setTimeout(() => {
       fetchOrders();
-    }
-  }, [fetchOrders, ordersLoaded]);
+    }, 500); // 500ms debounce for filters
+
+    return () => clearTimeout(timer);
+  }, [statusFilter, paymentFilter, dateFilter, sortBy, currentPage, ordersLoaded, fetchOrders]);
 
   // Lazy load customers and products only when dialog opens
   useEffect(() => {
@@ -309,12 +393,21 @@ export default function OrdersPage() {
   const handleSearch = () => {
     if (!ordersLoaded) {
       setOrdersLoaded(true);
+      // After setting ordersLoaded, the useEffect will trigger fetchOrders
+      return;
     }
-    fetchOrders();
+    
+    // Trigger search immediately
+    if (searchQuery && searchQuery.trim()) {
+      performHybridSearch(searchQuery);
+    } else {
+      fetchOrders();
+    }
   };
 
   const handleLoadOrders = () => {
     setOrdersLoaded(true);
+    // The useEffect will automatically fetch orders when ordersLoaded becomes true
   };
 
   const handleRefresh = () => {
@@ -1316,18 +1409,13 @@ export default function OrdersPage() {
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4">
             <div className="sm:col-span-2 lg:col-span-2">
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Search by order number, customer..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && handleSearch()}
-                  className="text-sm h-10"
-                />
-                <Button onClick={handleSearch} size="icon" className="shrink-0 h-10 w-10">
-                  <Search className="h-4 w-4" />
-                </Button>
-              </div>
+              <Input
+                placeholder="Search by order number, customer..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyPress={(e) => e.key === "Enter" && handleSearch()}
+                className="text-sm h-10"
+              />
             </div>
             <Select value={sortBy} onValueChange={setSortBy}>
               <SelectTrigger className="h-10">
@@ -1399,9 +1487,14 @@ export default function OrdersPage() {
                 Load Orders
               </Button>
             </div>
-          ) : isLoading ? (
-            <div className="flex justify-center py-8">
+          ) : isLoading || isSearchingDB ? (
+            <div className="flex flex-col items-center justify-center py-8 gap-3">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+              {isSearchingDB && (
+                <p className="text-sm text-muted-foreground">
+                  Searching database for "{searchQuery}"...
+                </p>
+              )}
             </div>
           ) : orders.length === 0 ? (
             <div className="text-center py-8">

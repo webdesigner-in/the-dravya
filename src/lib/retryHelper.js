@@ -38,7 +38,6 @@ export async function retryOperation(operation, maxRetries = 3, delayMs = 1000) 
       
       // Wait before retrying (exponential backoff)
       const waitTime = delayMs * Math.pow(2, attempt - 1);
-      console.log(`Retry attempt ${attempt}/${maxRetries} after ${waitTime}ms...`);
       await new Promise(resolve => setTimeout(resolve, waitTime));
     }
   }
