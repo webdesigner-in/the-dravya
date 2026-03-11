@@ -40,9 +40,11 @@ export default function WarehousePage() {
   const isAdmin = useAuthStore((state) => state.isAdmin());
   const hasShownAccessDenied = useRef(false);
   const [warehouses, setWarehouses] = useState([]);
+  const [allLoadedWarehouses, setAllLoadedWarehouses] = useState([]); // Cache all loaded warehouses
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [warehousesLoaded, setWarehousesLoaded] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false); // Loading more warehouses
+  const [hasMoreWarehouses, setHasMoreWarehouses] = useState(true); // Track if more warehouses available
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingWarehouse, setEditingWarehouse] = useState(null);
@@ -83,23 +85,89 @@ export default function WarehousePage() {
   }, [isAdmin, router]);
 
   useEffect(() => {
-    if (isAdmin && warehousesLoaded) {
+    if (isAdmin) {
       fetchWarehouses();
       fetchUsers();
     }
-  }, [isAdmin, warehousesLoaded]);
+  }, [isAdmin]);
+
+  // Infinite scroll implementation for warehouses
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const windowHeight = window.innerHeight;
+      const documentHeight = document.documentElement.scrollHeight;
+      
+      const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
+      
+      if (isNearBottom && !isLoading && !isLoadingMore && hasMoreWarehouses) {
+        loadMoreWarehouses();
+      }
+    };
+
+    let scrollTimeout;
+    const throttledScroll = () => {
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(handleScroll, 100);
+    };
+
+    window.addEventListener('scroll', throttledScroll);
+    return () => {
+      window.removeEventListener('scroll', throttledScroll);
+      clearTimeout(scrollTimeout);
+    };
+  }, [isLoading, isLoadingMore, hasMoreWarehouses]);
 
   const fetchWarehouses = async () => {
     try {
-      const response = await fetch("/api/warehouses");
+      setIsLoading(true);
+      const response = await fetch("/api/warehouses?page=1&limit=20");
       if (response.ok) {
         const data = await response.json();
-        setWarehouses(data.warehouses || []);
+        const warehouseData = data.warehouses || [];
+        setWarehouses(warehouseData);
+        setAllLoadedWarehouses(warehouseData);
+        
+        // Check if there are more warehouses to load
+        if (warehouseData.length < 20) {
+          setHasMoreWarehouses(false);
+        }
       }
     } catch (error) {
       toast.error("Failed to fetch warehouses");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Load more warehouses function
+  const loadMoreWarehouses = async () => {
+    if (isLoadingMore || !hasMoreWarehouses) return;
+    
+    setIsLoadingMore(true);
+    try {
+      const nextPage = Math.floor(allLoadedWarehouses.length / 20) + 1;
+      const response = await fetch(`/api/warehouses?page=${nextPage}&limit=20`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        const newWarehouses = data.warehouses || [];
+        
+        if (newWarehouses.length === 0) {
+          setHasMoreWarehouses(false);
+        } else {
+          setAllLoadedWarehouses(prev => [...prev, ...newWarehouses]);
+          setWarehouses(prev => [...prev, ...newWarehouses]);
+          
+          if (newWarehouses.length < 20) {
+            setHasMoreWarehouses(false);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load more warehouses:', error);
+    } finally {
+      setIsLoadingMore(false);
     }
   };
 
@@ -578,19 +646,7 @@ export default function WarehousePage() {
 
       {/* Warehouses List */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {!warehousesLoaded ? (
-          <div className="col-span-full text-center py-12">
-            <WarehouseIcon className="mx-auto h-16 w-16 text-gray-400 mb-4" />
-            <p className="text-lg font-medium mb-2">Warehouses Not Loaded</p>
-            <p className="text-muted-foreground mb-6">
-              Click the button below to load warehouses data
-            </p>
-            <Button onClick={() => setWarehousesLoaded(true)} size="lg">
-              <WarehouseIcon className="mr-2 h-5 w-5" />
-              Load Warehouses
-            </Button>
-          </div>
-        ) : isLoading ? (
+        {isLoading ? (
           <div className="col-span-full flex justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
           </div>
@@ -600,7 +656,8 @@ export default function WarehousePage() {
             <p className="mt-2 text-muted-foreground">No warehouses found</p>
           </div>
         ) : (
-          warehouses.map((warehouse) => (
+          <>
+            {warehouses.map((warehouse) => (
             <Card key={warehouse._id}>
               <CardHeader>
                 <div className="flex justify-between items-start">
@@ -674,6 +731,21 @@ export default function WarehousePage() {
               </CardContent>
             </Card>
           ))
+        )}
+        
+        {/* Loading more indicator */}
+        {isLoadingMore && (
+          <div className="col-span-full flex justify-center py-4">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+            <span className="ml-2 text-sm text-muted-foreground">Loading more warehouses...</span>
+          </div>
+        )}
+        
+        {/* End of results indicator */}
+        {!isLoading && !isLoadingMore && !hasMoreWarehouses && warehouses.length > 0 && (
+          <div className="col-span-full text-center py-4">
+            <p className="text-sm text-muted-foreground">No more warehouses to load</p>
+          </div>
         )}
       </div>
     </div>

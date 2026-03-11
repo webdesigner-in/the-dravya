@@ -47,7 +47,10 @@ export default function StockPage() {
   const hasShownAccessDenied = useRef(false);
   const [products, setProducts] = useState([]);
   const [movements, setMovements] = useState([]);
+  const [allLoadedMovements, setAllLoadedMovements] = useState([]); // Cache all loaded movements
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false); // Loading more movements
+  const [hasMoreMovements, setHasMoreMovements] = useState(true); // Track if more movements available
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -74,15 +77,54 @@ export default function StockPage() {
 
   const fetchMovements = async () => {
     try {
-      const response = await fetch("/api/stock/movements");
+      setIsLoading(true);
+      const response = await fetch("/api/stock/movements?page=1&limit=20");
       if (response.ok) {
         const data = await response.json();
-        setMovements(data.movements || []);
+        const movementData = data.movements || [];
+        setMovements(movementData);
+        setAllLoadedMovements(movementData);
+        
+        // Check if there are more movements to load
+        if (movementData.length < 20) {
+          setHasMoreMovements(false);
+        }
       }
     } catch (error) {
       toast.error("Failed to fetch stock movements");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Load more movements function
+  const loadMoreMovements = async () => {
+    if (isLoadingMore || !hasMoreMovements) return;
+    
+    setIsLoadingMore(true);
+    try {
+      const nextPage = Math.floor(allLoadedMovements.length / 20) + 1;
+      const response = await fetch(`/api/stock/movements?page=${nextPage}&limit=20`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        const newMovements = data.movements || [];
+        
+        if (newMovements.length === 0) {
+          setHasMoreMovements(false);
+        } else {
+          setAllLoadedMovements(prev => [...prev, ...newMovements]);
+          setMovements(prev => [...prev, ...newMovements]);
+          
+          if (newMovements.length < 20) {
+            setHasMoreMovements(false);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load more movements:', error);
+    } finally {
+      setIsLoadingMore(false);
     }
   };
 
@@ -100,6 +142,33 @@ export default function StockPage() {
       fetchMovements();
     }
   }, [isAdmin]);
+
+  // Infinite scroll implementation for stock movements
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const windowHeight = window.innerHeight;
+      const documentHeight = document.documentElement.scrollHeight;
+      
+      const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
+      
+      if (isNearBottom && !isLoading && !isLoadingMore && hasMoreMovements) {
+        loadMoreMovements();
+      }
+    };
+
+    let scrollTimeout;
+    const throttledScroll = () => {
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(handleScroll, 100);
+    };
+
+    window.addEventListener('scroll', throttledScroll);
+    return () => {
+      window.removeEventListener('scroll', throttledScroll);
+      clearTimeout(scrollTimeout);
+    };
+  }, [isLoading, isLoadingMore, hasMoreMovements]);
 
   const resetForm = () => {
     setFormData({
@@ -422,6 +491,21 @@ export default function StockPage() {
                   </div>
                 </div>
               ))}
+              
+              {/* Loading more indicator */}
+              {isLoadingMore && (
+                <div className="flex justify-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+                  <span className="ml-2 text-sm text-muted-foreground">Loading more movements...</span>
+                </div>
+              )}
+              
+              {/* End of results indicator */}
+              {!isLoading && !isLoadingMore && !hasMoreMovements && movements.length > 0 && (
+                <div className="text-center py-4">
+                  <p className="text-sm text-muted-foreground">No more movements to load</p>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

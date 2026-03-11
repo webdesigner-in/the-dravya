@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { registerModel } from '@/lib/modelRegistry';
 
 const ProductSchema = new mongoose.Schema(
   {
@@ -86,4 +87,5 @@ ProductSchema.index({ createdAt: -1 });
 // Text index for search
 ProductSchema.index({ name: 'text', description: 'text' });
 
-export default mongoose.models.Product || mongoose.model('Product', ProductSchema);
+// Export model using production-grade registry
+export default registerModel('Product', ProductSchema);

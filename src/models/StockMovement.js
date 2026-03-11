@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { registerModel } from '@/lib/modelRegistry';
 
 const StockMovementSchema = new mongoose.Schema(
   {
@@ -67,4 +68,5 @@ StockMovementSchema.index({ date: 1 });
 StockMovementSchema.index({ fromWarehouse: 1 });
 StockMovementSchema.index({ toWarehouse: 1 });
 
-export default mongoose.models.StockMovement || mongoose.model('StockMovement', StockMovementSchema);
+export default registerModel('StockMovement', StockMovementSchema);
+

@@ -48,7 +48,10 @@ export default function UsersPage() {
   const currentUser = useAuthStore((state) => state.user);
   const router = useRouter();
   const [users, setUsers] = useState([]);
+  const [allLoadedUsers, setAllLoadedUsers] = useState([]); // Cache all loaded users
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false); // Loading more users
+  const [hasMoreUsers, setHasMoreUsers] = useState(true); // Track if more users available
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
@@ -104,10 +107,18 @@ export default function UsersPage() {
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch("/api/users");
+      setIsLoading(true);
+      const response = await fetch("/api/users?page=1&limit=20");
       if (response.ok) {
         const data = await response.json();
-        setUsers(data.users || []);
+        const userData = data.users || [];
+        setUsers(userData);
+        setAllLoadedUsers(userData);
+        
+        // Check if there are more users to load
+        if (userData.length < 20) {
+          setHasMoreUsers(false);
+        }
       }
     } catch (error) {
       toast.error("Failed to fetch users");
@@ -116,11 +127,69 @@ export default function UsersPage() {
     }
   };
 
+  // Load more users function
+  const loadMoreUsers = async () => {
+    if (isLoadingMore || !hasMoreUsers) return;
+    
+    setIsLoadingMore(true);
+    try {
+      const nextPage = Math.floor(allLoadedUsers.length / 20) + 1;
+      const response = await fetch(`/api/users?page=${nextPage}&limit=20`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        const newUsers = data.users || [];
+        
+        if (newUsers.length === 0) {
+          setHasMoreUsers(false);
+        } else {
+          setAllLoadedUsers(prev => [...prev, ...newUsers]);
+          setUsers(prev => [...prev, ...newUsers]);
+          
+          if (newUsers.length < 20) {
+            setHasMoreUsers(false);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load more users:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
   useEffect(() => {
     if (isAdmin) {
       fetchUsers();
     }
   }, [isAdmin]);
+
+  // Infinite scroll implementation for users
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const windowHeight = window.innerHeight;
+      const documentHeight = document.documentElement.scrollHeight;
+      
+      const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
+      
+      if (isNearBottom && !isLoading && !isLoadingMore && hasMoreUsers) {
+        loadMoreUsers();
+      }
+    };
+
+    let scrollTimeout;
+    const throttledScroll = () => {
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(handleScroll, 100);
+    };
+
+    window.addEventListener('scroll', throttledScroll);
+    return () => {
+      window.removeEventListener('scroll', throttledScroll);
+      clearTimeout(scrollTimeout);
+    };
+  }, [isLoading, isLoadingMore, hasMoreUsers]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -477,6 +546,21 @@ export default function UsersPage() {
                   </div>
                 </div>
               ))}
+              
+              {/* Loading more indicator */}
+              {isLoadingMore && (
+                <div className="flex justify-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+                  <span className="ml-2 text-sm text-muted-foreground">Loading more users...</span>
+                </div>
+              )}
+              
+              {/* End of results indicator */}
+              {!isLoading && !isLoadingMore && !hasMoreUsers && users.length > 0 && (
+                <div className="text-center py-4">
+                  <p className="text-sm text-muted-foreground">No more users to load</p>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

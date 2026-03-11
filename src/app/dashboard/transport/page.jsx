@@ -41,9 +41,11 @@ export default function TransportPage() {
   const isAdmin = useAuthStore((state) => state.isAdmin());
   const hasShownAccessDenied = useRef(false);
   const [vehicles, setVehicles] = useState([]);
+  const [allLoadedVehicles, setAllLoadedVehicles] = useState([]); // Cache all loaded vehicles
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [vehiclesLoaded, setVehiclesLoaded] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false); // Loading more vehicles
+  const [hasMoreVehicles, setHasMoreVehicles] = useState(true); // Track if more vehicles available
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState(null);
@@ -77,23 +79,89 @@ export default function TransportPage() {
   }, [isAdmin, router]);
 
   useEffect(() => {
-    if (isAdmin && vehiclesLoaded) {
+    if (isAdmin) {
       fetchVehicles();
       fetchUsers();
     }
-  }, [isAdmin, vehiclesLoaded]);
+  }, [isAdmin]);
+
+  // Infinite scroll implementation for vehicles
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const windowHeight = window.innerHeight;
+      const documentHeight = document.documentElement.scrollHeight;
+      
+      const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
+      
+      if (isNearBottom && !isLoading && !isLoadingMore && hasMoreVehicles) {
+        loadMoreVehicles();
+      }
+    };
+
+    let scrollTimeout;
+    const throttledScroll = () => {
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(handleScroll, 100);
+    };
+
+    window.addEventListener('scroll', throttledScroll);
+    return () => {
+      window.removeEventListener('scroll', throttledScroll);
+      clearTimeout(scrollTimeout);
+    };
+  }, [isLoading, isLoadingMore, hasMoreVehicles]);
 
   const fetchVehicles = async () => {
     try {
-      const response = await fetch("/api/vehicles");
+      setIsLoading(true);
+      const response = await fetch("/api/vehicles?page=1&limit=20");
       if (response.ok) {
         const data = await response.json();
-        setVehicles(data.vehicles || []);
+        const vehicleData = data.vehicles || [];
+        setVehicles(vehicleData);
+        setAllLoadedVehicles(vehicleData);
+        
+        // Check if there are more vehicles to load
+        if (vehicleData.length < 20) {
+          setHasMoreVehicles(false);
+        }
       }
     } catch (error) {
       toast.error("Failed to fetch vehicles");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Load more vehicles function
+  const loadMoreVehicles = async () => {
+    if (isLoadingMore || !hasMoreVehicles) return;
+    
+    setIsLoadingMore(true);
+    try {
+      const nextPage = Math.floor(allLoadedVehicles.length / 20) + 1;
+      const response = await fetch(`/api/vehicles?page=${nextPage}&limit=20`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        const newVehicles = data.vehicles || [];
+        
+        if (newVehicles.length === 0) {
+          setHasMoreVehicles(false);
+        } else {
+          setAllLoadedVehicles(prev => [...prev, ...newVehicles]);
+          setVehicles(prev => [...prev, ...newVehicles]);
+          
+          if (newVehicles.length < 20) {
+            setHasMoreVehicles(false);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load more vehicles:', error);
+    } finally {
+      setIsLoadingMore(false);
     }
   };
 
@@ -543,19 +611,7 @@ export default function TransportPage() {
 
       {/* Vehicles List */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {!vehiclesLoaded ? (
-          <div className="col-span-full text-center py-12">
-            <Truck className="mx-auto h-16 w-16 text-gray-400 mb-4" />
-            <p className="text-lg font-medium mb-2">Vehicles Not Loaded</p>
-            <p className="text-muted-foreground mb-6">
-              Click the button below to load vehicles data
-            </p>
-            <Button onClick={() => setVehiclesLoaded(true)} size="lg">
-              <Truck className="mr-2 h-5 w-5" />
-              Load Vehicles
-            </Button>
-          </div>
-        ) : isLoading ? (
+        {isLoading ? (
           <div className="col-span-full flex justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
           </div>
@@ -635,6 +691,21 @@ export default function TransportPage() {
               </CardContent>
             </Card>
           ))
+        )}
+        
+        {/* Loading more indicator */}
+        {isLoadingMore && (
+          <div className="col-span-full flex justify-center py-4">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+            <span className="ml-2 text-sm text-muted-foreground">Loading more vehicles...</span>
+          </div>
+        )}
+        
+        {/* End of results indicator */}
+        {!isLoading && !isLoadingMore && !hasMoreVehicles && vehicles.length > 0 && (
+          <div className="col-span-full text-center py-4">
+            <p className="text-sm text-muted-foreground">No more vehicles to load</p>
+          </div>
         )}
       </div>
     </div>

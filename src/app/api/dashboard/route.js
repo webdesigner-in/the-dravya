@@ -26,19 +26,25 @@ export async function GET(request) {
 
     await connectDB();
 
-    // Check cache first
-    const cacheKey = `dashboard_${authUser.userId}_${authUser.role}`;
-    const cachedData = cache.get(cacheKey);
+    // Check cache first (but allow cache busting with query param)
+    const { searchParams } = new URL(request.url);
+    const bustCache = searchParams.get('bustCache') === 'true';
     
-    if (cachedData) {
-      return NextResponse.json(cachedData, {
-        headers: {
-          'X-Cache': 'HIT',
-          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0',
-        },
-      });
+    const cacheKey = `dashboard_${authUser.userId}_${authUser.role}`;
+    
+    if (!bustCache) {
+      const cachedData = cache.get(cacheKey);
+      
+      if (cachedData) {
+        return NextResponse.json(cachedData, {
+          headers: {
+            'X-Cache': 'HIT',
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+          },
+        });
+      }
     }
 
     // Get dates - Use UTC to avoid timezone issues

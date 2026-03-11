@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { preloadModels } from './preloadModels';
 
 const MONGODB_URI = process.env.MONGO_URI;
 
@@ -29,6 +30,10 @@ async function connectDB() {
 
     cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
       console.log('MongoDB connected successfully');
+      
+      // Preload all models to prevent MissingSchemaError
+      preloadModels();
+      
       return mongoose;
     }).catch((error) => {
       console.error('MongoDB connection error:', error);

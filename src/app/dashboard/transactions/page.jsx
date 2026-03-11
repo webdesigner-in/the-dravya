@@ -52,7 +52,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
-import { PaginationControls } from "@/components/ui/pagination-controls";
 import { useAuthStore } from "@/store/authStore";
 
 export default function TransactionsPage() {
@@ -60,6 +59,7 @@ export default function TransactionsPage() {
   const isAdmin = useAuthStore((state) => state.isAdmin());
   const hasShownAccessDenied = useRef(false);
   const [transactions, setTransactions] = useState([]);
+  const [allLoadedTransactions, setAllLoadedTransactions] = useState([]); // Cache all loaded transactions
   const [summary, setSummary] = useState({
     totalIncome: 0,
     totalExpense: 0,
@@ -68,6 +68,8 @@ export default function TransactionsPage() {
   const [customers, setCustomers] = useState([]);
   const [orders, setOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false); // New: Loading more transactions
+  const [hasMoreTransactions, setHasMoreTransactions] = useState(true); // New: Track if more transactions available
   const [transactionsLoaded, setTransactionsLoaded] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -75,8 +77,7 @@ export default function TransactionsPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState(null);
   
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
+  // Pagination state (kept for API compatibility)
   const [pagination, setPagination] = useState({
     currentPage: 1,
     totalPages: 1,
@@ -119,7 +120,78 @@ export default function TransactionsPage() {
       fetchCustomers();
       fetchOrders();
     }
-  }, [typeFilter, categoryFilter, dateFilter, searchQuery, currentPage, isAdmin, transactionsLoaded]);
+  }, [typeFilter, categoryFilter, dateFilter, searchQuery, isAdmin, transactionsLoaded]);
+
+  // Auto-load transactions on mount
+  useEffect(() => {
+    if (isAdmin && !transactionsLoaded) {
+      setTransactionsLoaded(true);
+    }
+  }, [isAdmin, transactionsLoaded]);
+
+  // Infinite scroll implementation for transactions
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const windowHeight = window.innerHeight;
+      const documentHeight = document.documentElement.scrollHeight;
+      
+      const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
+      
+      if (isNearBottom && !isLoading && !isLoadingMore && hasMoreTransactions && transactionsLoaded && !searchQuery) {
+        loadMoreTransactions();
+      }
+    };
+
+    let scrollTimeout;
+    const throttledScroll = () => {
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(handleScroll, 100);
+    };
+
+    window.addEventListener('scroll', throttledScroll);
+    return () => {
+      window.removeEventListener('scroll', throttledScroll);
+      clearTimeout(scrollTimeout);
+    };
+  }, [isLoading, isLoadingMore, hasMoreTransactions, transactionsLoaded, searchQuery]);
+
+  // Load more transactions function
+  const loadMoreTransactions = async () => {
+    if (isLoadingMore || !hasMoreTransactions) return;
+    
+    setIsLoadingMore(true);
+    try {
+      const nextPage = Math.floor(allLoadedTransactions.length / 20) + 1;
+      let url = "/api/transactions?";
+      if (typeFilter !== "all") url += `type=${typeFilter}&`;
+      if (categoryFilter !== "all") url += `category=${categoryFilter}&`;
+      if (dateFilter !== "all") url += `date=${dateFilter}&`;
+      url += `page=${nextPage}&limit=20`;
+
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        const newTransactions = data.transactions || [];
+        
+        if (newTransactions.length === 0) {
+          setHasMoreTransactions(false);
+        } else {
+          setAllLoadedTransactions(prev => [...prev, ...newTransactions]);
+          setTransactions(prev => [...prev, ...newTransactions]);
+          
+          if (data.pagination) {
+            setPagination(data.pagination);
+            setHasMoreTransactions(data.pagination.hasMore);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load more transactions:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   const fetchTransactions = async () => {
     try {
@@ -129,15 +201,20 @@ export default function TransactionsPage() {
       if (categoryFilter !== "all") url += `category=${categoryFilter}&`;
       if (dateFilter !== "all") url += `date=${dateFilter}&`;
       if (searchQuery) url += `search=${encodeURIComponent(searchQuery)}&`;
-      url += `page=${currentPage}&limit=20`;
+      url += `page=1&limit=20`;
 
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
-        setTransactions(data.transactions || []);
+        const transactionsData = data.transactions || [];
+        
+        setTransactions(transactionsData);
+        setAllLoadedTransactions(transactionsData);
         setSummary(data.summary || { totalIncome: 0, totalExpense: 0, netProfit: 0 });
+        
         if (data.pagination) {
           setPagination(data.pagination);
+          setHasMoreTransactions(data.pagination.hasMore);
         }
       }
     } catch (error) {
@@ -147,10 +224,7 @@ export default function TransactionsPage() {
     }
   };
 
-  const handlePageChange = (newPage) => {
-    setCurrentPage(newPage);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+
 
   const fetchCustomers = async () => {
     try {
@@ -591,7 +665,7 @@ export default function TransactionsPage() {
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
-                  setCurrentPage(1); // Reset to first page on search
+                  setHasMoreTransactions(true); // Reset infinite scroll state
                 }}
                 className="pl-10"
               />
@@ -601,7 +675,7 @@ export default function TransactionsPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Select value={typeFilter} onValueChange={(value) => {
                 setTypeFilter(value);
-                setCurrentPage(1);
+                setHasMoreTransactions(true);
               }}>
                 <SelectTrigger>
                   <SelectValue placeholder="Type" />
@@ -614,7 +688,7 @@ export default function TransactionsPage() {
               </Select>
               <Select value={categoryFilter} onValueChange={(value) => {
                 setCategoryFilter(value);
-                setCurrentPage(1);
+                setHasMoreTransactions(true);
               }}>
                 <SelectTrigger>
                   <SelectValue placeholder="Category" />
@@ -634,7 +708,7 @@ export default function TransactionsPage() {
               </Select>
               <Select value={dateFilter} onValueChange={(value) => {
                 setDateFilter(value);
-                setCurrentPage(1);
+                setHasMoreTransactions(true);
               }}>
                 <SelectTrigger>
                   <SelectValue placeholder="Date" />
@@ -658,7 +732,7 @@ export default function TransactionsPage() {
                   setTypeFilter("all");
                   setCategoryFilter("all");
                   setDateFilter("all");
-                  setCurrentPage(1);
+                  setHasMoreTransactions(true);
                 }}
                 className="w-full md:w-auto"
               >
@@ -674,23 +748,20 @@ export default function TransactionsPage() {
         <CardHeader>
           <CardTitle>All Transactions</CardTitle>
           <CardDescription>
-            {transactionsLoaded ? `Showing ${pagination.totalItems} transaction(s)` : "Click 'Load Transactions' to view transactions"}
+            {transactions.length > 0 ? (
+              <>
+                Showing {transactions.length} transaction(s)
+                {hasMoreTransactions && !searchQuery && (
+                  <span className="text-muted-foreground"> • Scroll down to load more</span>
+                )}
+              </>
+            ) : (
+              "Your transactions will appear here"
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {!transactionsLoaded ? (
-            <div className="text-center py-12">
-              <IndianRupee className="mx-auto h-16 w-16 text-gray-400 mb-4" />
-              <p className="text-lg font-medium mb-2">Transactions Not Loaded</p>
-              <p className="text-muted-foreground mb-6">
-                Click the button below to load transactions data
-              </p>
-              <Button onClick={() => setTransactionsLoaded(true)} size="lg">
-                <IndianRupee className="mr-2 h-5 w-5" />
-                Load Transactions
-              </Button>
-            </div>
-          ) : isLoading ? (
+          {isLoading && transactions.length === 0 ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
             </div>
@@ -700,8 +771,9 @@ export default function TransactionsPage() {
               <p className="mt-2 text-muted-foreground">No transactions found</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {transactions.map((transaction) => (
+            <>
+              <div className="space-y-4">
+                {transactions.map((transaction) => (
                 <Card key={transaction._id}>
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-4">
@@ -783,20 +855,27 @@ export default function TransactionsPage() {
                   </CardContent>
                 </Card>
               ))}
-            </div>
+              </div>
+              
+              {/* Infinite Scroll Loading Indicator */}
+              {isLoadingMore && (
+                <div className="flex flex-col items-center justify-center py-6 gap-2">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+                  <p className="text-sm text-muted-foreground">Loading more transactions...</p>
+                </div>
+              )}
+              
+              {/* End of Results Indicator */}
+              {!hasMoreTransactions && transactions.length > 0 && !searchQuery && (
+                <div className="text-center py-6">
+                  <p className="text-sm text-muted-foreground">
+                    You've reached the end of all transactions
+                  </p>
+                </div>
+              )}
+            </>
           )}
           
-          {/* Pagination Controls */}
-          {!isLoading && transactions.length > 0 && (
-            <PaginationControls
-              currentPage={pagination.currentPage}
-              totalPages={pagination.totalPages}
-              totalItems={pagination.totalItems}
-              itemsPerPage={pagination.itemsPerPage}
-              onPageChange={handlePageChange}
-              isLoading={isLoading}
-            />
-          )}
         </CardContent>
       </Card>
 

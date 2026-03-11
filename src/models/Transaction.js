@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { registerModel } from '@/lib/modelRegistry';
 
 const TransactionSchema = new mongoose.Schema(
   {
@@ -100,4 +101,5 @@ TransactionSchema.index({ customer: 1, type: 1, date: -1 });
 // Text index for search
 TransactionSchema.index({ description: 'text', reference: 'text' });
 
-export default mongoose.models.Transaction || mongoose.model('Transaction', TransactionSchema);
+export default registerModel('Transaction', TransactionSchema);
+

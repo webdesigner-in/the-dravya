@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { registerModel } from '@/lib/modelRegistry';
 
 const VehicleSchema = new mongoose.Schema(
   {
@@ -90,4 +91,5 @@ VehicleSchema.index({ currentLocation: '2dsphere' }, { sparse: true });
 VehicleSchema.index({ status: 1 });
 VehicleSchema.index({ driver: 1 });
 
-export default mongoose.models.Vehicle || mongoose.model('Vehicle', VehicleSchema);
+export default registerModel('Vehicle', VehicleSchema);
+

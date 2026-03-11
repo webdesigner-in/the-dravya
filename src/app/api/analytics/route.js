@@ -76,25 +76,50 @@ export async function GET(request) {
     }
 
     // Fetch all necessary data with timeouts and lean queries
-    const [orders, customers, products, invoices] = await Promise.all([
-      Order.find(dateFilter)
-        .populate('customer', 'name')
-        .populate('items.product', 'name size')
-        .lean()
-        .maxTimeMS(10000),
-      Customer.find({})
-        .select('_id name')
-        .lean()
-        .maxTimeMS(5000),
-      Product.find({})
-        .select('_id name size stock reorderLevel')
-        .lean()
-        .maxTimeMS(5000),
-      Invoice.find(dateFilter)
-        .select('status dueDate')
-        .lean()
-        .maxTimeMS(5000),
-    ]);
+    // Use individual try-catch blocks for better error handling
+    let orders = [];
+    let customers = [];
+    let products = [];
+    let invoices = [];
+
+    try {
+      const results = await Promise.allSettled([
+        Order.find(dateFilter)
+          .populate('customer', 'name')
+          .populate('items.product', 'name size')
+          .lean()
+          .maxTimeMS(8000),
+        Customer.find({})
+          .select('_id name')
+          .lean()
+          .maxTimeMS(3000),
+        Product.find({})
+          .select('_id name size stock reorderLevel')
+          .lean()
+          .maxTimeMS(3000),
+        Invoice.find(dateFilter)
+          .select('status dueDate')
+          .lean()
+          .maxTimeMS(3000),
+      ]);
+
+      // Extract results with fallbacks
+      orders = results[0].status === 'fulfilled' ? results[0].value : [];
+      customers = results[1].status === 'fulfilled' ? results[1].value : [];
+      products = results[2].status === 'fulfilled' ? results[2].value : [];
+      invoices = results[3].status === 'fulfilled' ? results[3].value : [];
+
+      // Log any failures for debugging
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          const collections = ['orders', 'customers', 'products', 'invoices'];
+          console.error(`Failed to fetch ${collections[index]}:`, result.reason);
+        }
+      });
+    } catch (error) {
+      console.error('Analytics data fetch error:', error);
+      // Continue with empty arrays - analytics will show zeros
+    }
 
     // Revenue Metrics
     const totalRevenue = orders.reduce((sum, order) => sum + (order.finalAmount || 0), 0);

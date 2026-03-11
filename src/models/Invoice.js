@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { registerModel } from '@/lib/modelRegistry';
 
 const InvoiceItemSchema = new mongoose.Schema({
   product: {
@@ -162,9 +163,5 @@ InvoiceSchema.index({ dueDate: 1, status: 1 });
 // Compound index for overdue invoices
 InvoiceSchema.index({ status: 1, dueDate: 1, balanceAmount: 1 });
 
-// Delete the model if it exists to force reload with new schema
-if (mongoose.models.Invoice) {
-  delete mongoose.models.Invoice;
-}
-
-export default mongoose.model('Invoice', InvoiceSchema);
+// Export model using production-grade registry
+export default registerModel('Invoice', InvoiceSchema);

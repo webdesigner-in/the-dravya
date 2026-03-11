@@ -42,13 +42,15 @@ import {
 import { Search, FileText, Download, Eye, ShoppingCart, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
-import { PaginationControls } from "@/components/ui/pagination-controls";
 
 export default function InvoicesPage() {
   const router = useRouter();
   const isAdmin = useAuthStore((state) => state.isAdmin());
   const [invoices, setInvoices] = useState([]);
+  const [allLoadedInvoices, setAllLoadedInvoices] = useState([]); // Cache all loaded invoices
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false); // New: Loading more invoices
+  const [hasMoreInvoices, setHasMoreInvoices] = useState(true); // New: Track if more invoices available
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -65,8 +67,7 @@ export default function InvoicesPage() {
     terms: "",
   });
   
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
+  // Pagination state (kept for API compatibility)
   const [pagination, setPagination] = useState({
     currentPage: 1,
     totalPages: 1,
@@ -77,7 +78,69 @@ export default function InvoicesPage() {
 
   useEffect(() => {
     fetchInvoices();
-  }, [statusFilter, currentPage, searchQuery]); // Added searchQuery to trigger automatic search
+  }, [statusFilter, searchQuery]); // Removed currentPage dependency
+
+  // Infinite scroll implementation for invoices
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const windowHeight = window.innerHeight;
+      const documentHeight = document.documentElement.scrollHeight;
+      
+      const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
+      
+      if (isNearBottom && !isLoading && !isLoadingMore && hasMoreInvoices && !searchQuery) {
+        loadMoreInvoices();
+      }
+    };
+
+    let scrollTimeout;
+    const throttledScroll = () => {
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(handleScroll, 100);
+    };
+
+    window.addEventListener('scroll', throttledScroll);
+    return () => {
+      window.removeEventListener('scroll', throttledScroll);
+      clearTimeout(scrollTimeout);
+    };
+  }, [isLoading, isLoadingMore, hasMoreInvoices, searchQuery]);
+
+  // Load more invoices function
+  const loadMoreInvoices = async () => {
+    if (isLoadingMore || !hasMoreInvoices) return;
+    
+    setIsLoadingMore(true);
+    try {
+      const nextPage = Math.floor(allLoadedInvoices.length / 20) + 1;
+      let url = "/api/invoices?";
+      if (statusFilter !== "all") url += `status=${statusFilter}&`;
+      url += `page=${nextPage}&limit=20`;
+
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        const newInvoices = data.invoices || [];
+        
+        if (newInvoices.length === 0) {
+          setHasMoreInvoices(false);
+        } else {
+          setAllLoadedInvoices(prev => [...prev, ...newInvoices]);
+          setInvoices(prev => [...prev, ...newInvoices]);
+          
+          if (data.pagination) {
+            setPagination(data.pagination);
+            setHasMoreInvoices(data.pagination.hasMore);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load more invoices:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   const fetchInvoices = async () => {
     try {
@@ -85,14 +148,19 @@ export default function InvoicesPage() {
       let url = "/api/invoices?";
       if (statusFilter !== "all") url += `status=${statusFilter}&`;
       if (searchQuery) url += `search=${searchQuery}&`;
-      url += `page=${currentPage}&limit=20`;
+      url += `page=1&limit=20`;
 
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
-        setInvoices(data.invoices || []);
+        const invoicesData = data.invoices || [];
+        
+        setInvoices(invoicesData);
+        setAllLoadedInvoices(invoicesData);
+        
         if (data.pagination) {
           setPagination(data.pagination);
+          setHasMoreInvoices(data.pagination.hasMore);
         }
       }
     } catch (error) {
@@ -104,12 +172,7 @@ export default function InvoicesPage() {
 
   const handleSearch = (value) => {
     setSearchQuery(value);
-    setCurrentPage(1); // Reset to first page on search
-  };
-
-  const handlePageChange = (newPage) => {
-    setCurrentPage(newPage);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setHasMoreInvoices(true); // Reset infinite scroll state
   };
 
   const getStatusColor = (status) => {
@@ -241,11 +304,20 @@ export default function InvoicesPage() {
         <CardHeader>
           <CardTitle className="text-lg md:text-xl">All Invoices</CardTitle>
           <CardDescription className="text-sm">
-            Showing {pagination.totalItems} invoice(s)
+            {invoices.length > 0 ? (
+              <>
+                Showing {invoices.length} invoice(s)
+                {hasMoreInvoices && !searchQuery && (
+                  <span className="text-muted-foreground"> • Scroll down to load more</span>
+                )}
+              </>
+            ) : (
+              "Your invoices will appear here"
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent className="p-2 sm:p-6">
-          {isLoading ? (
+          {isLoading && invoices.length === 0 ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
             </div>
@@ -258,8 +330,9 @@ export default function InvoicesPage() {
               </p>
             </div>
           ) : (
-            <div className="space-y-3 md:space-y-4">
-              {invoices.map((invoice) => (
+            <>
+              <div className="space-y-3 md:space-y-4">
+                {invoices.map((invoice) => (
                 <Card key={invoice._id} className="hover:shadow-md transition-shadow overflow-hidden">
                   <CardContent className="p-3 md:p-4">
                     <div className="flex flex-col gap-4">
@@ -379,19 +452,25 @@ export default function InvoicesPage() {
                   </CardContent>
                 </Card>
               ))}
-            </div>
-          )}
-          
-          {/* Pagination Controls */}
-          {!isLoading && invoices.length > 0 && (
-            <PaginationControls
-              currentPage={pagination.currentPage}
-              totalPages={pagination.totalPages}
-              totalItems={pagination.totalItems}
-              itemsPerPage={pagination.itemsPerPage}
-              onPageChange={handlePageChange}
-              isLoading={isLoading}
-            />
+              </div>
+              
+              {/* Infinite Scroll Loading Indicator */}
+              {isLoadingMore && (
+                <div className="flex flex-col items-center justify-center py-6 gap-2">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+                  <p className="text-sm text-muted-foreground">Loading more invoices...</p>
+                </div>
+              )}
+              
+              {/* End of Results Indicator */}
+              {!hasMoreInvoices && invoices.length > 0 && !searchQuery && (
+                <div className="text-center py-6">
+                  <p className="text-sm text-muted-foreground">
+                    You've reached the end of all invoices
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

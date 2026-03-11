@@ -91,18 +91,26 @@ export function AppSidebar() {
     // Restore scroll position on mount
     const savedScrollPosition = sessionStorage.getItem('sidebarScrollPosition');
     if (savedScrollPosition) {
-      sidebarContent.scrollTop = parseInt(savedScrollPosition);
+      // Use requestAnimationFrame to ensure DOM is ready
+      requestAnimationFrame(() => {
+        sidebarContent.scrollTop = parseInt(savedScrollPosition);
+      });
     }
 
-    // Save scroll position on scroll
+    // Save scroll position on scroll with throttling
+    let scrollTimeout;
     const handleScroll = () => {
-      sessionStorage.setItem('sidebarScrollPosition', sidebarContent.scrollTop.toString());
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        sessionStorage.setItem('sidebarScrollPosition', sidebarContent.scrollTop.toString());
+      }, 100); // Throttle to 100ms
     };
 
-    sidebarContent.addEventListener('scroll', handleScroll);
+    sidebarContent.addEventListener('scroll', handleScroll, { passive: true });
     
     return () => {
       sidebarContent.removeEventListener('scroll', handleScroll);
+      clearTimeout(scrollTimeout);
     };
   }, []);
 
@@ -113,10 +121,21 @@ export function AppSidebar() {
 
     const savedScrollPosition = sessionStorage.getItem('sidebarScrollPosition');
     if (savedScrollPosition) {
-      // Use setTimeout to ensure DOM is ready
+      // Use multiple methods to ensure scroll position is restored
+      const scrollTop = parseInt(savedScrollPosition);
+      
+      // Immediate attempt
+      sidebarContent.scrollTop = scrollTop;
+      
+      // Delayed attempt with requestAnimationFrame
+      requestAnimationFrame(() => {
+        sidebarContent.scrollTop = scrollTop;
+      });
+      
+      // Final attempt with setTimeout
       setTimeout(() => {
-        sidebarContent.scrollTop = parseInt(savedScrollPosition);
-      }, 0);
+        sidebarContent.scrollTop = scrollTop;
+      }, 50);
     }
   }, [pathname]);
 

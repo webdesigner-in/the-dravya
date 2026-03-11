@@ -30,13 +30,15 @@ import {
 import { toast } from "sonner";
 import Link from "next/link";
 import PageHeader from "@/components/layout/PageHeader";
-import { PaginationControls } from "@/components/ui/pagination-controls";
 
 export default function ReportsPage() {
   const [customerLedger, setCustomerLedger] = useState([]);
+  const [allLoadedLedger, setAllLoadedLedger] = useState([]); // Cache all loaded ledger data
   const [filteredLedger, setFilteredLedger] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false); // New: Loading more ledger data
+  const [hasMoreLedger, setHasMoreLedger] = useState(true); // New: Track if more ledger data available
   const [isAdmin, setIsAdmin] = useState(false);
   const [expandedCustomer, setExpandedCustomer] = useState(null);
   const [customerOrders, setCustomerOrders] = useState([]);
@@ -48,8 +50,7 @@ export default function ReportsPage() {
     totalCustomers: 0,
   });
   
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
+  // Pagination state (kept for API compatibility)
   const [pagination, setPagination] = useState({
     currentPage: 1,
     totalPages: 1,
@@ -60,30 +61,93 @@ export default function ReportsPage() {
 
   useEffect(() => {
     fetchCustomerLedger();
-  }, [currentPage]);
+  }, []);
+
+  // Infinite scroll implementation for reports
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const windowHeight = window.innerHeight;
+      const documentHeight = document.documentElement.scrollHeight;
+      
+      const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
+      
+      if (isNearBottom && !isLoading && !isLoadingMore && hasMoreLedger && !searchQuery) {
+        loadMoreLedger();
+      }
+    };
+
+    let scrollTimeout;
+    const throttledScroll = () => {
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(handleScroll, 100);
+    };
+
+    window.addEventListener('scroll', throttledScroll);
+    return () => {
+      window.removeEventListener('scroll', throttledScroll);
+      clearTimeout(scrollTimeout);
+    };
+  }, [isLoading, isLoadingMore, hasMoreLedger, searchQuery]);
+
+  // Load more ledger data function
+  const loadMoreLedger = async () => {
+    if (isLoadingMore || !hasMoreLedger) return;
+    
+    setIsLoadingMore(true);
+    try {
+      const nextPage = Math.floor(allLoadedLedger.length / 20) + 1;
+      const response = await fetch(`/api/reports/customer-ledger?page=${nextPage}&limit=20`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        const newLedger = data.ledger || [];
+        
+        if (newLedger.length === 0) {
+          setHasMoreLedger(false);
+        } else {
+          setAllLoadedLedger(prev => [...prev, ...newLedger]);
+          setCustomerLedger(prev => [...prev, ...newLedger]);
+          setFilteredLedger(prev => [...prev, ...newLedger]);
+          
+          if (data.pagination) {
+            setPagination(data.pagination);
+            setHasMoreLedger(data.pagination.hasMore);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load more ledger data:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   useEffect(() => {
     if (searchQuery.trim() === "") {
-      setFilteredLedger(customerLedger);
+      setFilteredLedger(allLoadedLedger);
     } else {
       const query = searchQuery.toLowerCase();
-      const filtered = customerLedger.filter(
+      const filtered = allLoadedLedger.filter(
         (ledger) =>
           ledger.customer?.name?.toLowerCase().includes(query) ||
           ledger.customer?.phone?.includes(query)
       );
       setFilteredLedger(filtered);
     }
-  }, [searchQuery, customerLedger]);
+  }, [searchQuery, allLoadedLedger]);
 
   const fetchCustomerLedger = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch(`/api/reports/customer-ledger?page=${currentPage}&limit=20`);
+      const response = await fetch(`/api/reports/customer-ledger?page=1&limit=20`);
       if (response.ok) {
         const data = await response.json();
-        setCustomerLedger(data.ledger || []);
-        setFilteredLedger(data.ledger || []);
+        const ledgerData = data.ledger || [];
+        
+        setCustomerLedger(ledgerData);
+        setAllLoadedLedger(ledgerData);
+        setFilteredLedger(ledgerData);
         setIsAdmin(data.isAdmin || false);
         
         // Only set summary if provided (admin only)
@@ -93,6 +157,7 @@ export default function ReportsPage() {
         
         if (data.pagination) {
           setPagination(data.pagination);
+          setHasMoreLedger(data.pagination.hasMore);
         }
       } else {
         toast.error("Failed to fetch customer ledger");
@@ -102,12 +167,6 @@ export default function ReportsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handlePageChange = (newPage) => {
-    setCurrentPage(newPage);
-    setSearchQuery(""); // Clear search when changing pages
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const formatDate = (dateString) => {
@@ -419,16 +478,19 @@ export default function ReportsPage() {
             </div>
           )}
           
-          {/* Pagination Controls */}
-          {!isLoading && !searchQuery && filteredLedger.length > 0 && (
-            <PaginationControls
-              currentPage={pagination.currentPage}
-              totalPages={pagination.totalPages}
-              totalItems={pagination.totalItems}
-              itemsPerPage={pagination.itemsPerPage}
-              onPageChange={handlePageChange}
-              isLoading={isLoading}
-            />
+          {/* Loading more indicator */}
+          {isLoadingMore && (
+            <div className="flex justify-center py-4">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+              <span className="ml-2 text-sm text-muted-foreground">Loading more...</span>
+            </div>
+          )}
+          
+          {/* End of results indicator */}
+          {!isLoading && !isLoadingMore && !hasMoreLedger && !searchQuery && filteredLedger.length > 0 && (
+            <div className="text-center py-4">
+              <p className="text-sm text-muted-foreground">No more data to load</p>
+            </div>
           )}
         </CardContent>
       </Card>

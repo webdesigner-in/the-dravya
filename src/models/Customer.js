@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { registerModel } from '@/lib/modelRegistry';
 
 const CustomerSchema = new mongoose.Schema(
   {
@@ -83,4 +84,5 @@ CustomerSchema.index({ name: 'text', phone: 'text' });
 // Geospatial index - only if location exists
 CustomerSchema.index({ location: '2dsphere' }, { sparse: true });
 
-export default mongoose.models.Customer || mongoose.model('Customer', CustomerSchema);
+// Export model using production-grade registry
+export default registerModel('Customer', CustomerSchema);

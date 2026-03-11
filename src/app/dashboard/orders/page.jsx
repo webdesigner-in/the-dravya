@@ -53,7 +53,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
-import { PaginationControls } from "@/components/ui/pagination-controls";
 import { Badge } from "@/components/ui/badge";
 import { getUserFriendlyError } from "@/lib/errorMessages";
 
@@ -67,7 +66,9 @@ export default function OrdersPage() {
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false); // New: Loading more orders
   const [isSearchingDB, setIsSearchingDB] = useState(false); // Separate loading state for DB search
+  const [hasMoreOrders, setHasMoreOrders] = useState(true); // New: Track if more orders available
   const [ordersLoaded, setOrdersLoaded] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
@@ -92,8 +93,7 @@ export default function OrdersPage() {
     deliveryDate: "",
   });
   
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
+  // Pagination state (kept for API compatibility)
   const [pagination, setPagination] = useState({
     currentPage: 1,
     totalPages: 1,
@@ -154,9 +154,11 @@ export default function OrdersPage() {
   });
 
   // Memoized fetch functions to prevent infinite loops
-  const fetchOrders = useCallback(async (appendToCache = false) => {
+  const fetchOrders = useCallback(async () => {
     try {
       setIsLoading(true);
+      const page = 1; // Always start from page 1 with infinite scroll
+      
       let url = "/api/orders?";
       if (statusFilter !== "all") url += `status=${statusFilter}&`;
       if (paymentFilter !== "all") url += `paymentStatus=${paymentFilter}&`;
@@ -164,7 +166,7 @@ export default function OrdersPage() {
       if (customerIdFromUrl) url += `customer=${customerIdFromUrl}&`;
       if (searchQuery) url += `search=${encodeURIComponent(searchQuery)}&`;
       if (sortBy) url += `sortBy=${sortBy}&`;
-      url += `page=${currentPage}&limit=20`;
+      url += `page=${page}&limit=20`;
 
       const response = await fetch(url);
       if (response.ok) {
@@ -174,21 +176,12 @@ export default function OrdersPage() {
         // Set pagination info
         if (data.pagination) {
           setPagination(data.pagination);
+          setHasMoreOrders(data.pagination.hasMore);
         }
         
-        // Update displayed orders
+        // Reset data (for filters/search)
         setOrders(ordersData);
-        
-        // Update cache - merge with existing if appending, otherwise replace
-        if (appendToCache) {
-          setAllLoadedOrders(prev => {
-            const existingIds = new Set(prev.map(o => o._id));
-            const newOrders = ordersData.filter(o => !existingIds.has(o._id));
-            return [...prev, ...newOrders];
-          });
-        } else {
-          setAllLoadedOrders(ordersData);
-        }
+        setAllLoadedOrders(ordersData);
       } else {
         toast.error("Failed to fetch orders");
       }
@@ -197,7 +190,7 @@ export default function OrdersPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [statusFilter, paymentFilter, dateFilter, customerIdFromUrl, searchQuery, sortBy, currentPage]);
+  }, [statusFilter, paymentFilter, dateFilter, customerIdFromUrl, searchQuery, sortBy]);
 
   // Client-side search in loaded orders
   const searchLoadedOrders = useCallback((query) => {
@@ -316,24 +309,93 @@ export default function OrdersPage() {
     }
   }, [selectedOrder, isInvoiceDialogOpen]);
 
-  // Auto-load orders if customer ID is in URL
+  // Auto-load orders on mount (no manual load button needed)
   useEffect(() => {
-    if (customerIdFromUrl && !ordersLoaded) {
+    if (!ordersLoaded) {
       setOrdersLoaded(true);
     }
-  }, [customerIdFromUrl, ordersLoaded]);
+  }, [ordersLoaded]);
 
-  // Fetch orders when dependencies change - only if orders have been loaded at least once
-  // Debounce filter changes to reduce API calls
+  // Infinite scroll implementation
+  useEffect(() => {
+    const handleScroll = () => {
+      // Check if user is near bottom of page (within 200px)
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const windowHeight = window.innerHeight;
+      const documentHeight = document.documentElement.scrollHeight;
+      
+      const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
+      
+      if (isNearBottom && !isLoading && !isLoadingMore && hasMoreOrders && ordersLoaded && !searchQuery) {
+        loadMoreOrders();
+      }
+    };
+
+    // Throttle scroll events
+    let scrollTimeout;
+    const throttledScroll = () => {
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(handleScroll, 100);
+    };
+
+    window.addEventListener('scroll', throttledScroll);
+    return () => {
+      window.removeEventListener('scroll', throttledScroll);
+      clearTimeout(scrollTimeout);
+    };
+  }, [isLoading, isLoadingMore, hasMoreOrders, ordersLoaded, searchQuery]);
+
+  // Load more orders function
+  const loadMoreOrders = async () => {
+    if (isLoadingMore || !hasMoreOrders) return;
+    
+    setIsLoadingMore(true);
+    try {
+      const nextPage = Math.floor(allLoadedOrders.length / 20) + 1;
+      let url = "/api/orders?";
+      if (statusFilter !== "all") url += `status=${statusFilter}&`;
+      if (paymentFilter !== "all") url += `paymentStatus=${paymentFilter}&`;
+      if (dateFilter !== "all") url += `date=${dateFilter}&`;
+      if (customerIdFromUrl) url += `customer=${customerIdFromUrl}&`;
+      if (sortBy) url += `sortBy=${sortBy}&`;
+      url += `page=${nextPage}&limit=20`;
+
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        const newOrders = data.orders || [];
+        
+        if (newOrders.length === 0) {
+          setHasMoreOrders(false);
+        } else {
+          // Append new orders to existing ones
+          setAllLoadedOrders(prev => [...prev, ...newOrders]);
+          setOrders(prev => [...prev, ...newOrders]);
+          
+          // Update pagination info
+          if (data.pagination) {
+            setPagination(data.pagination);
+            setHasMoreOrders(data.pagination.hasMore);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load more orders:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
+
+  // Fetch orders when dependencies change - with debouncing for filters
   useEffect(() => {
     if (!ordersLoaded) return;
     
     const timer = setTimeout(() => {
-      fetchOrders();
+      fetchOrders(); // Reset data when filters change
     }, 500); // 500ms debounce for filters
 
     return () => clearTimeout(timer);
-  }, [statusFilter, paymentFilter, dateFilter, sortBy, currentPage, ordersLoaded, fetchOrders]);
+  }, [statusFilter, paymentFilter, dateFilter, sortBy, ordersLoaded, fetchOrders]);
 
   // Lazy load customers and products only when dialog opens
   useEffect(() => {
@@ -371,6 +433,22 @@ export default function OrdersPage() {
     return () => clearTimeout(timer);
   }, [customerSearchQuery, isDialogOpen]);
 
+  // Debounce main search query
+  useEffect(() => {
+    if (!ordersLoaded) return; // Only search if orders are loaded
+    
+    const timer = setTimeout(() => {
+      if (searchQuery && searchQuery.trim()) {
+        performHybridSearch(searchQuery);
+      } else {
+        // If search is cleared, show all loaded orders with current filters
+        setOrders(allLoadedOrders);
+      }
+    }, 300); // 300ms delay
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, ordersLoaded, performHybridSearch, allLoadedOrders]);
+
   // Close customer dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -394,21 +472,18 @@ export default function OrdersPage() {
   const handleSearch = () => {
     if (!ordersLoaded) {
       setOrdersLoaded(true);
-      // After setting ordersLoaded, the useEffect will trigger fetchOrders
       return;
     }
+    
+    // Reset infinite scroll state for search
+    setHasMoreOrders(true);
     
     // Trigger search immediately
     if (searchQuery && searchQuery.trim()) {
       performHybridSearch(searchQuery);
     } else {
-      fetchOrders();
+      fetchOrders(); // Reset to show all orders
     }
-  };
-
-  const handleLoadOrders = () => {
-    setOrdersLoaded(true);
-    // The useEffect will automatically fetch orders when ordersLoaded becomes true
   };
 
   const handleRefresh = () => {
@@ -418,27 +493,19 @@ export default function OrdersPage() {
       return;
     }
     
-    // Reset all filters
+    // Reset all filters and infinite scroll state
     setSearchQuery("");
     setStatusFilter("all");
     setPaymentFilter("all");
     setDateFilter("all");
     setSortBy("date");
-    setCurrentPage(1);
+    setHasMoreOrders(true);
     
     // Reload data
     if (ordersLoaded) {
       fetchOrders();
     }
     toast.success("Filters reset and data refreshed");
-  };
-
-  const handlePageChange = (newPage) => {
-    if (!ordersLoaded) {
-      setOrdersLoaded(true);
-    }
-    setCurrentPage(newPage);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleEditOrder = () => {
@@ -1472,30 +1539,30 @@ export default function OrdersPage() {
         <CardHeader>
           <CardTitle className="text-lg md:text-xl">All Orders</CardTitle>
           <CardDescription className="text-sm">
-            {ordersLoaded ? `Showing ${pagination.totalItems} order(s)` : "Click 'Load Orders' to view orders"}
+            {orders.length > 0 ? (
+              <>
+                Showing {orders.length} order(s)
+                {hasMoreOrders && !searchQuery && (
+                  <span className="text-muted-foreground"> • Scroll down to load more</span>
+                )}
+              </>
+            ) : (
+              "Your orders will appear here"
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent className="p-2 sm:p-6">
-          {!ordersLoaded ? (
-            <div className="text-center py-12">
-              <ShoppingCart className="mx-auto h-16 w-16 text-gray-400 mb-4" />
-              <p className="text-lg font-medium mb-2">Orders Not Loaded</p>
-              <p className="text-muted-foreground mb-6">
-                Click the button below to load orders data
-              </p>
-              <Button onClick={handleLoadOrders} size="lg">
-                <ShoppingCart className="mr-2 h-5 w-5" />
-                Load Orders
-              </Button>
-            </div>
-          ) : isLoading || isSearchingDB ? (
+          {isLoading && orders.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 gap-3">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-              {isSearchingDB && (
-                <p className="text-sm text-muted-foreground">
-                  Searching database for "{searchQuery}"...
-                </p>
-              )}
+              <p className="text-sm text-muted-foreground">Loading orders...</p>
+            </div>
+          ) : isSearchingDB ? (
+            <div className="flex flex-col items-center justify-center py-8 gap-3">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+              <p className="text-sm text-muted-foreground">
+                Searching database for "{searchQuery}"...
+              </p>
             </div>
           ) : orders.length === 0 ? (
             <div className="text-center py-8">
@@ -1503,8 +1570,9 @@ export default function OrdersPage() {
               <p className="mt-2 text-muted-foreground">No orders found</p>
             </div>
           ) : (
-            <div className="space-y-3 md:space-y-4">
-              {orders.map((order) => (
+            <>
+              <div className="space-y-3 md:space-y-4">
+                {orders.map((order) => (
                 <Card key={order._id} className="hover:shadow-md transition-shadow overflow-hidden">
                   <CardContent className="p-3 md:p-4">
                     <div className="flex flex-col gap-4">
@@ -1744,20 +1812,26 @@ export default function OrdersPage() {
                     </div>
                   </CardContent>
                 </Card>
-              ))}
-            </div>
-          )}
-          
-          {/* Pagination Controls */}
-          {!isLoading && ordersLoaded && orders.length > 0 && (
-            <PaginationControls
-              currentPage={pagination.currentPage}
-              totalPages={pagination.totalPages}
-              totalItems={pagination.totalItems}
-              itemsPerPage={pagination.itemsPerPage}
-              onPageChange={handlePageChange}
-              isLoading={isLoading}
-            />
+                ))}
+              </div>
+              
+              {/* Infinite Scroll Loading Indicator */}
+              {isLoadingMore && (
+                <div className="flex flex-col items-center justify-center py-6 gap-2">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+                  <p className="text-sm text-muted-foreground">Loading more orders...</p>
+                </div>
+              )}
+              
+              {/* End of Results Indicator */}
+              {!hasMoreOrders && orders.length > 0 && !searchQuery && (
+                <div className="text-center py-6">
+                  <p className="text-sm text-muted-foreground">
+                    You've reached the end of all orders
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

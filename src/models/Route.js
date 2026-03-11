@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { registerModel } from '@/lib/modelRegistry';
 
 const RouteStopSchema = new mongoose.Schema({
   customer: {
@@ -118,4 +119,5 @@ RouteSchema.index({ status: 1 });
 RouteSchema.index({ driver: 1 });
 RouteSchema.index({ vehicle: 1 });
 
-export default mongoose.models.Route || mongoose.model('Route', RouteSchema);
+export default registerModel('Route', RouteSchema);
+

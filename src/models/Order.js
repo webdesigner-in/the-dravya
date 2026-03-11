@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { registerModel } from '@/lib/modelRegistry';
 
 const OrderItemSchema = new mongoose.Schema({
   product: {
@@ -161,9 +162,5 @@ OrderSchema.index({ 'guestInfo.phone': 1 });
 // NEW: Compound index for delivery date queries
 OrderSchema.index({ deliveryDate: 1, createdAt: -1 });
 
-// Delete the model if it exists to force reload with new schema
-if (mongoose.models.Order) {
-  delete mongoose.models.Order;
-}
-
-export default mongoose.model('Order', OrderSchema);
+// Export model using production-grade registry
+export default registerModel('Order', OrderSchema);

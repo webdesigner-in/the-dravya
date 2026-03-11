@@ -43,15 +43,17 @@ import { Plus, Pencil, Trash2, Users, Phone, Mail, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import PageHeader from "@/components/layout/PageHeader";
-import { PaginationControls } from "@/components/ui/pagination-controls";
 
 export default function CustomersPage() {
   const user = useAuthStore((state) => state.user);
   const isAdmin = useAuthStore((state) => state.isAdmin());
   const [customers, setCustomers] = useState([]);
+  const [allLoadedCustomers, setAllLoadedCustomers] = useState([]); // Cache all loaded customers
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false); // New: Loading more customers
+  const [hasMoreCustomers, setHasMoreCustomers] = useState(true); // New: Track if more customers available
   const [customersLoaded, setCustomersLoaded] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -59,8 +61,7 @@ export default function CustomersPage() {
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
+  // Pagination state (kept for API compatibility)
   const [pagination, setPagination] = useState({
     currentPage: 1,
     totalPages: 1,
@@ -95,7 +96,9 @@ export default function CustomersPage() {
   const fetchCustomers = useCallback(async () => {
     try {
       setIsLoading(true);
-      let url = `/api/customers?page=${currentPage}&limit=20`;
+      const page = 1; // Always start from page 1 with infinite scroll
+      
+      let url = `/api/customers?page=${page}&limit=20`;
       if (debouncedSearch) {
         url += `&search=${encodeURIComponent(debouncedSearch)}`;
       }
@@ -103,9 +106,15 @@ export default function CustomersPage() {
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
-        setCustomers(data.customers || []);
+        const customersData = data.customers || [];
+        
+        // Reset data for search or filter changes
+        setCustomers(customersData);
+        setAllLoadedCustomers(customersData);
+        
         if (data.pagination) {
           setPagination(data.pagination);
+          setHasMoreCustomers(data.pagination.hasMore);
         }
       }
     } catch (error) {
@@ -113,13 +122,13 @@ export default function CustomersPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [currentPage, debouncedSearch]);
+  }, [debouncedSearch]);
 
   // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery);
-      setCurrentPage(1); // Reset to first page on search
+      setHasMoreCustomers(true); // Reset infinite scroll state
     }, 500); // 500ms delay
 
     return () => clearTimeout(timer);
@@ -130,6 +139,73 @@ export default function CustomersPage() {
       fetchCustomers();
     }
   }, [fetchCustomers, customersLoaded]);
+
+  // Auto-load customers on mount
+  useEffect(() => {
+    if (!customersLoaded) {
+      setCustomersLoaded(true);
+    }
+  }, [customersLoaded]);
+
+  // Infinite scroll implementation for customers
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const windowHeight = window.innerHeight;
+      const documentHeight = document.documentElement.scrollHeight;
+      
+      const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
+      
+      if (isNearBottom && !isLoading && !isLoadingMore && hasMoreCustomers && customersLoaded && !debouncedSearch) {
+        loadMoreCustomers();
+      }
+    };
+
+    let scrollTimeout;
+    const throttledScroll = () => {
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(handleScroll, 100);
+    };
+
+    window.addEventListener('scroll', throttledScroll);
+    return () => {
+      window.removeEventListener('scroll', throttledScroll);
+      clearTimeout(scrollTimeout);
+    };
+  }, [isLoading, isLoadingMore, hasMoreCustomers, customersLoaded, debouncedSearch]);
+
+  // Load more customers function
+  const loadMoreCustomers = async () => {
+    if (isLoadingMore || !hasMoreCustomers) return;
+    
+    setIsLoadingMore(true);
+    try {
+      const nextPage = Math.floor(allLoadedCustomers.length / 20) + 1;
+      const url = `/api/customers?page=${nextPage}&limit=20`;
+
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        const newCustomers = data.customers || [];
+        
+        if (newCustomers.length === 0) {
+          setHasMoreCustomers(false);
+        } else {
+          setAllLoadedCustomers(prev => [...prev, ...newCustomers]);
+          setCustomers(prev => [...prev, ...newCustomers]);
+          
+          if (data.pagination) {
+            setPagination(data.pagination);
+            setHasMoreCustomers(data.pagination.hasMore);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load more customers:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   // Generate new phone number when dialog opens for new customer
   useEffect(() => {
@@ -143,11 +219,6 @@ export default function CustomersPage() {
       }));
     }
   }, [isDialogOpen, editingCustomer]);
-
-  const handlePageChange = (newPage) => {
-    setCurrentPage(newPage);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
 
   const resetForm = () => {
     setFormData({
@@ -540,13 +611,16 @@ export default function CustomersPage() {
             <div>
               <CardTitle>All Customers</CardTitle>
               <CardDescription>
-                {customersLoaded ? (
+                {customers.length > 0 ? (
                   <>
-                    {pagination.totalItems} customer{pagination.totalItems !== 1 ? 's' : ''}
+                    {customers.length} customer{customers.length !== 1 ? 's' : ''}
                     {searchQuery && ` matching "${searchQuery}"`}
+                    {hasMoreCustomers && !debouncedSearch && (
+                      <span className="text-muted-foreground"> • Scroll down to load more</span>
+                    )}
                   </>
                 ) : (
-                  "Click 'Load Customers' to view customers"
+                  "Your customers will appear here"
                 )}
               </CardDescription>
             </div>
@@ -566,19 +640,7 @@ export default function CustomersPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {!customersLoaded ? (
-            <div className="text-center py-12">
-              <Users className="mx-auto h-16 w-16 text-gray-400 mb-4" />
-              <p className="text-lg font-medium mb-2">Customers Not Loaded</p>
-              <p className="text-muted-foreground mb-6">
-                Click the button below to load customers data
-              </p>
-              <Button onClick={() => setCustomersLoaded(true)} size="lg">
-                <Users className="mr-2 h-5 w-5" />
-                Load Customers
-              </Button>
-            </div>
-          ) : isLoading ? (
+          {isLoading && customers.length === 0 ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
             </div>
@@ -595,8 +657,9 @@ export default function CustomersPage() {
               )}
             </div>
           ) : (
-            <div className="space-y-4">
-              {customers.map((customer) => (
+            <>
+              <div className="space-y-4">
+                {customers.map((customer) => (
                 <Card key={customer._id} className="hover:shadow-md transition-shadow">
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-3">
@@ -672,19 +735,25 @@ export default function CustomersPage() {
                   </CardContent>
                 </Card>
               ))}
-            </div>
-          )}
-          
-          {/* Pagination Controls */}
-          {!isLoading && customers.length > 0 && (
-            <PaginationControls
-              currentPage={pagination.currentPage}
-              totalPages={pagination.totalPages}
-              totalItems={pagination.totalItems}
-              itemsPerPage={pagination.itemsPerPage}
-              onPageChange={handlePageChange}
-              isLoading={isLoading}
-            />
+              </div>
+              
+              {/* Infinite Scroll Loading Indicator */}
+              {isLoadingMore && (
+                <div className="flex flex-col items-center justify-center py-6 gap-2">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+                  <p className="text-sm text-muted-foreground">Loading more customers...</p>
+                </div>
+              )}
+              
+              {/* End of Results Indicator */}
+              {!hasMoreCustomers && customers.length > 0 && !debouncedSearch && (
+                <div className="text-center py-6">
+                  <p className="text-sm text-muted-foreground">
+                    You've reached the end of all customers
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

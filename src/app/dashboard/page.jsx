@@ -46,13 +46,14 @@ export default function DashboardPage() {
     fetchDashboardData();
   }, []);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = async (bustCache = false) => {
     setIsLoading(true);
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
       
-      const response = await fetch("/api/dashboard", {
+      const url = bustCache ? "/api/dashboard?bustCache=true" : "/api/dashboard";
+      const response = await fetch(url, {
         cache: 'no-store',
         headers: {
           'Cache-Control': 'no-cache',
@@ -156,14 +157,25 @@ export default function DashboardPage() {
             Welcome back, {user?.name || "User"}! {isAdmin ? "You're viewing data from all users." : "Here's your personal data."}
           </p>
         </div>
-        {isAdmin && (
-          <Link href="/dashboard/analytics" className="shrink-0">
-            <Button variant="outline" className="w-full sm:w-auto">
-              View Analytics
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </Link>
-        )}
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => fetchDashboardData(true)}
+            className="shrink-0"
+          >
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+          {isAdmin && (
+            <Link href="/dashboard/analytics" className="shrink-0">
+              <Button variant="outline" className="w-full sm:w-auto">
+                View Analytics
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* Today's Stats */}

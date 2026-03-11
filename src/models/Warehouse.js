@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { registerModel } from '@/lib/modelRegistry';
 
 const WarehouseSchema = new mongoose.Schema(
   {
@@ -94,4 +95,5 @@ WarehouseSchema.index({ location: '2dsphere' }, { sparse: true });
 WarehouseSchema.index({ type: 1 });
 WarehouseSchema.index({ isActive: 1 });
 
-export default mongoose.models.Warehouse || mongoose.model('Warehouse', WarehouseSchema);
+export default registerModel('Warehouse', WarehouseSchema);
+

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { registerModel } from '@/lib/modelRegistry';
 
 const NotificationSchema = new mongoose.Schema(
   {
@@ -49,4 +50,5 @@ NotificationSchema.index({ user: 1, isRead: 1 });
 NotificationSchema.index({ createdAt: -1 });
 NotificationSchema.index({ type: 1 });
 
-export default mongoose.models.Notification || mongoose.model('Notification', NotificationSchema);
+export default registerModel('Notification', NotificationSchema);
+
