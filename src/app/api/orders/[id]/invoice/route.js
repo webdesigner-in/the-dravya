@@ -45,17 +45,32 @@ export async function POST(request, { params }) {
       );
     }
 
-    // Create invoice items from order items with ORIGINAL prices
-    const invoiceItems = order.items.map((item) => ({
-      product: item.product._id,
-      description: item.product.name,
-      quantity: item.quantity,
-      price: item.product.price, // Use original product price, not custom price
-      subtotal: item.quantity * item.product.price, // Calculate subtotal at original price
-    }));
+    // Create invoice items from order items with proper pricing data
+    const invoiceItems = order.items.map((item) => {
+      const originalPrice = item.originalPrice || item.product.price;
+      const actualPrice = item.price;
+      const discountPercentage = originalPrice > actualPrice ? 
+        Math.round(((originalPrice - actualPrice) / originalPrice) * 100) : 0;
 
-    // Calculate subtotal from invoice items (at original prices)
+      return {
+        product: item.product._id,
+        description: item.product.name,
+        quantity: item.quantity,
+        price: actualPrice, // Use the actual price from order
+        originalPrice: originalPrice, // Store original price for display
+        discountPercentage: discountPercentage, // Calculate discount percentage
+        subtotal: item.subtotal, // Use subtotal from order
+      };
+    });
+
+    // Calculate subtotal from invoice items (using actual prices)
     const calculatedSubtotal = invoiceItems.reduce((sum, item) => sum + item.subtotal, 0);
+    
+    // Calculate original subtotal for proper invoice display
+    const originalSubtotal = invoiceItems.reduce((sum, item) => {
+      const originalPrice = item.originalPrice || item.product.price;
+      return sum + (originalPrice * item.quantity);
+    }, 0);
 
     // Calculate payment amounts (must be before using 'paid' variable)
     const paid = parseFloat(paidAmount) || 0;
@@ -90,10 +105,10 @@ export async function POST(request, { params }) {
       invoiceNumber,
       order: order._id,
       items: invoiceItems,
-      subtotal: calculatedSubtotal,
+      subtotal: originalSubtotal, // Use original subtotal (before discounts)
       discount: order.discount || 0,
       tax: order.tax || 0,
-      totalAmount: order.finalAmount,
+      totalAmount: order.finalAmount, // Final amount after discounts and tax
       paidAmount: paid,
       balanceAmount: balance,
       status: invoiceStatus,
@@ -153,7 +168,7 @@ export async function POST(request, { params }) {
     const populatedInvoice = await Invoice.findById(invoice._id)
       .populate('customer', 'name phone email address')
       .populate('order', 'orderNumber orderType guestInfo')
-      .populate('items.product', 'name sku');
+      .populate('items.product', 'name sku price');
 
     return NextResponse.json(
       {

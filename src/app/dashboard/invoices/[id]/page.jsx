@@ -206,27 +206,151 @@ export default function InvoiceDetailPage() {
 
           {/* Items Table */}
           <div className="overflow-x-auto -mx-4 sm:mx-0">
-            <table className="w-full min-w-125">
-              <thead className="border-b-2">
-                <tr className="text-left">
-                  <th className="pb-2 px-2 sm:px-0 text-xs sm:text-sm">Item</th>
-                  <th className="pb-2 text-center text-xs sm:text-sm">Qty</th>
-                  <th className="pb-2 text-right text-xs sm:text-sm">Price</th>
-                  <th className="pb-2 text-right px-2 sm:px-0 text-xs sm:text-sm">Amount</th>
+            <table className="w-full min-w-150 border-collapse">
+              <thead>
+                <tr className="border-b-2 border-gray-300">
+                  <th className="pb-3 px-2 sm:px-4 text-left text-sm font-semibold text-gray-700">
+                    ITEM DESCRIPTION
+                  </th>
+                  <th className="pb-3 px-2 text-center text-sm font-semibold text-gray-700">
+                    QTY
+                  </th>
+                  <th className="pb-3 px-2 text-right text-sm font-semibold text-gray-700">
+                    UNIT PRICE
+                  </th>
+                  <th className="pb-3 px-2 sm:px-4 text-right text-sm font-semibold text-gray-700">
+                    TOTAL
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {invoice.items.map((item, index) => (
-                  <tr key={index} className="border-b">
-                    <td className="py-3 px-2 sm:px-0">
-                      <p className="font-medium text-xs sm:text-sm">{item.description || item.product?.name}</p>
-                      {item.product?.sku && (
-                        <p className="text-xs text-muted-foreground">SKU: {item.product.sku}</p>
-                      )}
+                  <tr key={index} className="border-b border-gray-200 hover:bg-gray-50">
+                    <td className="py-4 px-2 sm:px-4">
+                      <div>
+                        <p className="font-medium text-sm text-gray-900">
+                          {item.description || item.product?.name}
+                        </p>
+                        {item.product?.sku && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            SKU: {item.product.sku}
+                          </p>
+                        )}
+                        {item.product?.size && (
+                          <p className="text-xs text-gray-500">
+                            Size: {item.product.size.value}{item.product.size.unit}
+                          </p>
+                        )}
+                      </div>
                     </td>
-                    <td className="py-3 text-center text-xs sm:text-sm">{item.quantity} cartons</td>
-                    <td className="py-3 text-right text-xs sm:text-sm">₹{item.price.toFixed(2)}</td>
-                    <td className="py-3 text-right px-2 sm:px-0 text-xs sm:text-sm">₹{item.subtotal.toFixed(2)}</td>
+                    <td className="py-4 px-2 text-center">
+                      <span className="inline-flex items-center px-2 py-1 rounded-md bg-blue-50 text-blue-700 text-sm font-medium">
+                        {item.quantity} cartons
+                      </span>
+                    </td>
+                    <td className="py-4 px-2 text-right">
+                      <div className="space-y-1">
+                        {(() => {
+                          // For new invoices with originalPrice data
+                          if (item.originalPrice && item.originalPrice > item.price) {
+                            return (
+                              <>
+                                <div className="text-xs text-gray-500 line-through">
+                                  ₹{item.originalPrice.toFixed(2)}
+                                </div>
+                                <div className="text-sm font-semibold text-green-600">
+                                  ₹{item.price.toFixed(2)}
+                                </div>
+                                {item.discountPercentage > 0 && (
+                                  <div className="text-xs text-green-600 font-medium">
+                                    {item.discountPercentage}% OFF
+                                  </div>
+                                )}
+                              </>
+                            );
+                          }
+                          
+                          // For existing invoices, use product price as original if there's a discount
+                          if (invoice.discount > 0 && item.product?.price && item.product.price > item.price) {
+                            const originalPrice = item.product.price;
+                            const discountPercentage = Math.round(((originalPrice - item.price) / originalPrice) * 100);
+                            
+                            return (
+                              <>
+                                <div className="text-xs text-gray-500 line-through">
+                                  ₹{originalPrice.toFixed(2)}
+                                </div>
+                                <div className="text-sm font-semibold text-green-600">
+                                  ₹{item.price.toFixed(2)}
+                                </div>
+                                {discountPercentage > 0 && (
+                                  <div className="text-xs text-green-600 font-medium">
+                                    {discountPercentage}% OFF
+                                  </div>
+                                )}
+                              </>
+                            );
+                          }
+                          
+                          // Default display for no discount
+                          return (
+                            <div className="text-sm font-semibold text-gray-900">
+                              ₹{item.price.toFixed(2)}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </td>
+                    <td className="py-4 px-2 sm:px-4 text-right">
+                      <div className="space-y-1">
+                        {(() => {
+                          // For new invoices with originalPrice data
+                          if (item.originalPrice && item.originalPrice > item.price) {
+                            return (
+                              <>
+                                <div className="text-xs text-gray-500 line-through">
+                                  ₹{(item.originalPrice * item.quantity).toFixed(2)}
+                                </div>
+                                <div className="text-sm font-bold text-gray-900">
+                                  ₹{item.subtotal.toFixed(2)}
+                                </div>
+                                <div className="text-xs text-green-600 font-medium">
+                                  You Save: ₹{((item.originalPrice - item.price) * item.quantity).toFixed(2)}
+                                </div>
+                              </>
+                            );
+                          }
+                          
+                          // For existing invoices, use product price as original if there's a discount
+                          if (invoice.discount > 0 && item.product?.price && item.product.price > item.price) {
+                            const originalPrice = item.product.price;
+                            const originalTotal = originalPrice * item.quantity;
+                            const savings = (originalPrice - item.price) * item.quantity;
+                            
+                            return (
+                              <>
+                                <div className="text-xs text-gray-500 line-through">
+                                  ₹{originalTotal.toFixed(2)}
+                                </div>
+                                <div className="text-sm font-bold text-gray-900">
+                                  ₹{item.subtotal.toFixed(2)}
+                                </div>
+                                <div className="text-xs text-green-600 font-medium">
+                                  You Save: ₹{savings.toFixed(2)}
+                                </div>
+                              </>
+                            );
+                          }
+                          
+                          // Default display for no discount
+                          return (
+                            <div className="text-sm font-bold text-gray-900">
+                              ₹{item.subtotal.toFixed(2)}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>

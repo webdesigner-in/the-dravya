@@ -27,7 +27,7 @@ export async function GET(request, { params }) {
     const invoice = await Invoice.findById(id)
       .populate('customer', 'name phone email address')
       .populate('order', 'orderNumber orderType guestInfo')
-      .populate('items.product', 'name sku')
+      .populate('items.product', 'name sku price')
       .populate('createdBy', 'name email');
 
     if (!invoice) {
@@ -139,7 +139,7 @@ export async function PUT(request, { params }) {
     const updatedInvoice = await Invoice.findById(id)
       .populate('customer', 'name phone email address')
       .populate('order', 'orderNumber')
-      .populate('items.product', 'name sku')
+      .populate('items.product', 'name sku price')
       .populate('createdBy', 'name email');
 
     return NextResponse.json({

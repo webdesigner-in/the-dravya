@@ -38,6 +38,16 @@ const ProductSchema = new mongoose.Schema(
       required: [true, 'Please provide a price'],
       min: 0,
     },
+    originalPrice: {
+      type: Number,
+      min: 0,
+    },
+    discountPercentage: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
+    },
     costPrice: {
       type: Number,
       required: true,

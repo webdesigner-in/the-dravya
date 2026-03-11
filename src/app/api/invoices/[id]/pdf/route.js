@@ -26,7 +26,7 @@ export async function GET(request, { params }) {
     const invoice = await Invoice.findById(id)
       .populate('customer', 'name phone email address')
       .populate('order', 'orderNumber')
-      .populate('items.product', 'name sku');
+      .populate('items.product', 'name sku price');
 
     if (!invoice) {
       return NextResponse.json(
@@ -248,17 +248,60 @@ function generateInvoiceHTML(invoice) {
       </tr>
     </thead>
     <tbody>
-      ${invoice.items.map(item => `
+      ${invoice.items.map(item => {
+        // Calculate pricing display for both new and existing invoices
+        let priceDisplay = `₹${item.price.toFixed(2)}`;
+        let amountDisplay = `₹${item.subtotal.toFixed(2)}`;
+        
+        // For new invoices with originalPrice data
+        if (item.originalPrice && item.originalPrice > item.price) {
+          const discountPercentage = Math.round(((item.originalPrice - item.price) / item.originalPrice) * 100);
+          priceDisplay = `
+            <span style="text-decoration: line-through; color: #666; font-size: 12px;">₹${item.originalPrice.toFixed(2)}</span><br>
+            <span style="color: #16a34a; font-weight: bold;">₹${item.price.toFixed(2)}</span><br>
+            <span style="color: #16a34a; font-size: 11px;">${discountPercentage}% OFF</span>
+          `;
+          
+          const originalTotal = item.originalPrice * item.quantity;
+          const savings = (item.originalPrice - item.price) * item.quantity;
+          amountDisplay = `
+            <span style="text-decoration: line-through; color: #666; font-size: 12px;">₹${originalTotal.toFixed(2)}</span><br>
+            <span style="font-weight: bold;">₹${item.subtotal.toFixed(2)}</span><br>
+            <span style="color: #16a34a; font-size: 11px;">You Save: ₹${savings.toFixed(2)}</span>
+          `;
+        }
+        // For existing invoices, use product price as original if there's a discount
+        else if (invoice.discount > 0 && item.product?.price && item.product.price > item.price) {
+          const originalPrice = item.product.price;
+          const discountPercentage = Math.round(((originalPrice - item.price) / originalPrice) * 100);
+          
+          priceDisplay = `
+            <span style="text-decoration: line-through; color: #666; font-size: 12px;">₹${originalPrice.toFixed(2)}</span><br>
+            <span style="color: #16a34a; font-weight: bold;">₹${item.price.toFixed(2)}</span><br>
+            <span style="color: #16a34a; font-size: 11px;">${discountPercentage}% OFF</span>
+          `;
+          
+          const originalTotal = originalPrice * item.quantity;
+          const savings = (originalPrice - item.price) * item.quantity;
+          amountDisplay = `
+            <span style="text-decoration: line-through; color: #666; font-size: 12px;">₹${originalTotal.toFixed(2)}</span><br>
+            <span style="font-weight: bold;">₹${item.subtotal.toFixed(2)}</span><br>
+            <span style="color: #16a34a; font-size: 11px;">You Save: ₹${savings.toFixed(2)}</span>
+          `;
+        }
+        
+        return `
         <tr>
           <td>
             <strong>${item.description || item.product?.name || 'N/A'}</strong>
             ${item.product?.sku ? `<br><small>SKU: ${item.product.sku}</small>` : ''}
           </td>
           <td class="text-center">${item.quantity} cartons</td>
-          <td class="text-right">₹${item.price.toFixed(2)}</td>
-          <td class="text-right">₹${item.subtotal.toFixed(2)}</td>
+          <td class="text-right">${priceDisplay}</td>
+          <td class="text-right">${amountDisplay}</td>
         </tr>
-      `).join('')}
+        `;
+      }).join('')}
     </tbody>
   </table>
 

@@ -136,10 +136,16 @@ export async function PUT(request, { params }) {
         const customSubtotal = item.quantity * itemPrice;
         subtotalAtCustomPrice += customSubtotal;
 
+        // Calculate discount percentage
+        const discountPercentage = originalPrice > itemPrice ? 
+          Math.round(((originalPrice - itemPrice) / originalPrice) * 100) : 0;
+
         validatedItems.push({
           product: product._id,
           quantity: item.quantity,
           price: itemPrice,
+          originalPrice: originalPrice, // Store original price for invoice display
+          discountPercentage: discountPercentage, // Store discount percentage
           subtotal: customSubtotal,
         });
 
