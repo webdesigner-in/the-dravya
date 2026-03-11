@@ -656,8 +656,7 @@ export default function WarehousePage() {
             <p className="mt-2 text-muted-foreground">No warehouses found</p>
           </div>
         ) : (
-          <>
-            {warehouses.map((warehouse) => (
+          warehouses.map((warehouse) => (
             <Card key={warehouse._id}>
               <CardHeader>
                 <div className="flex justify-between items-start">
