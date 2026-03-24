@@ -3,10 +3,10 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
+import { useAnalytics } from "@/hooks/useAnalytics";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -25,7 +25,6 @@ import {
   Users,
   Package,
   FileText,
-  Truck,
   AlertCircle,
   CheckCircle,
   Clock,
@@ -37,9 +36,10 @@ import PageHeader from "@/components/layout/PageHeader";
 export default function AnalyticsPage() {
   const router = useRouter();
   const isAdmin = useAuthStore((state) => state.isAdmin());
-  const [analytics, setAnalytics] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [timeRange, setTimeRange] = useState("month");
+
+  // Use React Query for data fetching
+  const { data: analytics, isLoading, error } = useAnalytics(timeRange);
 
   // Redirect if not admin
   useEffect(() => {
@@ -49,28 +49,12 @@ export default function AnalyticsPage() {
     }
   }, [isAdmin, router]);
 
+  // Handle errors
   useEffect(() => {
-    if (isAdmin) {
-      fetchAnalytics();
-    }
-  }, [timeRange, isAdmin]);
-
-  const fetchAnalytics = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch(`/api/analytics?range=${timeRange}`);
-      if (response.ok) {
-        const data = await response.json();
-        setAnalytics(data.analytics);
-      } else {
-        toast.error("Failed to fetch analytics");
-      }
-    } catch (error) {
+    if (error) {
       toast.error("Failed to fetch analytics");
-      } finally {
-      setIsLoading(false);
     }
-  };
+  }, [error]);
 
   if (isLoading) {
     return (
@@ -80,7 +64,7 @@ export default function AnalyticsPage() {
     );
   }
 
-  if (!analytics) {
+  if (!analytics?.analytics) {
     return (
       <div className="flex justify-center items-center h-screen">
         <p className="text-muted-foreground">No analytics data available</p>
@@ -93,6 +77,8 @@ export default function AnalyticsPage() {
     return null;
   }
 
+  const analyticsData = analytics.analytics;
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -100,7 +86,7 @@ export default function AnalyticsPage() {
         description="Comprehensive business insights and metrics"
         action={
           <Select value={timeRange} onValueChange={setTimeRange}>
-            <SelectTrigger className="w-[180px]">
+            <SelectTrigger className="w-45">
               <SelectValue placeholder="Select period" />
             </SelectTrigger>
             <SelectContent>
@@ -124,9 +110,9 @@ export default function AnalyticsPage() {
               <IndianRupee className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">₹{analytics.revenue.total.toFixed(2)}</div>
+              <div className="text-2xl font-bold">₹{analyticsData.revenue.total.toFixed(2)}</div>
               <p className="text-xs text-muted-foreground">
-                From {analytics.revenue.orderCount} orders
+                From {analyticsData.revenue.orderCount} orders
               </p>
             </CardContent>
           </Card>
@@ -138,10 +124,10 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">
-                ₹{analytics.revenue.collected.toFixed(2)}
+                ₹{analyticsData.revenue.collected.toFixed(2)}
               </div>
               <p className="text-xs text-muted-foreground">
-                {analytics.revenue.collectionRate.toFixed(1)}% collection rate
+                {analyticsData.revenue.collectionRate.toFixed(1)}% collection rate
               </p>
             </CardContent>
           </Card>
@@ -153,7 +139,7 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-600">
-                ₹{analytics.revenue.outstanding.toFixed(2)}
+                ₹{analyticsData.revenue.outstanding.toFixed(2)}
               </div>
               <p className="text-xs text-muted-foreground">
                 Pending collection
@@ -168,7 +154,7 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                ₹{analytics.revenue.averageOrderValue.toFixed(2)}
+                ₹{analyticsData.revenue.averageOrderValue.toFixed(2)}
               </div>
               <p className="text-xs text-muted-foreground">
                 Per order
@@ -188,7 +174,7 @@ export default function AnalyticsPage() {
               <ShoppingCart className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{analytics.orders.total}</div>
+              <div className="text-2xl font-bold">{analyticsData.orders.total}</div>
               <p className="text-xs text-muted-foreground">
                 All orders
               </p>
@@ -202,10 +188,10 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">
-                {analytics.orders.delivered}
+                {analyticsData.orders.delivered}
               </div>
               <p className="text-xs text-muted-foreground">
-                {analytics.orders.deliveryRate.toFixed(1)}% delivery rate
+                {analyticsData.orders.deliveryRate.toFixed(1)}% delivery rate
               </p>
             </CardContent>
           </Card>
@@ -217,7 +203,7 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-yellow-600">
-                {analytics.orders.pending}
+                {analyticsData.orders.pending}
               </div>
               <p className="text-xs text-muted-foreground">
                 Awaiting processing
@@ -232,10 +218,10 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-600">
-                {analytics.orders.cancelled}
+                {analyticsData.orders.cancelled}
               </div>
               <p className="text-xs text-muted-foreground">
-                {analytics.orders.cancellationRate.toFixed(1)}% cancellation rate
+                {analyticsData.orders.cancellationRate.toFixed(1)}% cancellation rate
               </p>
             </CardContent>
           </Card>
@@ -248,7 +234,7 @@ export default function AnalyticsPage() {
         <Card>
           <CardContent className="pt-6">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-              {Object.entries(analytics.orders.byStatus).map(([status, count]) => (
+              {Object.entries(analyticsData.orders.byStatus).map(([status, count]) => (
                 <div key={status} className="text-center">
                   <p className="text-2xl font-bold">{count}</p>
                   <p className="text-xs text-muted-foreground capitalize">{status}</p>
@@ -270,7 +256,7 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">
-                {analytics.payments.paid}
+                {analyticsData.payments.paid}
               </div>
               <p className="text-xs text-muted-foreground">
                 Fully paid orders
@@ -285,7 +271,7 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-yellow-600">
-                {analytics.payments.partial}
+                {analyticsData.payments.partial}
               </div>
               <p className="text-xs text-muted-foreground">
                 Partially paid orders
@@ -300,7 +286,7 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-600">
-                {analytics.payments.unpaid}
+                {analyticsData.payments.unpaid}
               </div>
               <p className="text-xs text-muted-foreground">
                 Awaiting payment
@@ -320,7 +306,7 @@ export default function AnalyticsPage() {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{analytics.customers.total}</div>
+              <div className="text-2xl font-bold">{analyticsData.customers.total}</div>
               <p className="text-xs text-muted-foreground">
                 Registered customers
               </p>
@@ -334,7 +320,7 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">
-                {analytics.customers.withOrders}
+                {analyticsData.customers.withOrders}
               </div>
               <p className="text-xs text-muted-foreground">
                 Customers with orders
@@ -349,7 +335,7 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {analytics.customers.averageOrdersPerCustomer.toFixed(1)}
+                {analyticsData.customers.averageOrdersPerCustomer.toFixed(1)}
               </div>
               <p className="text-xs text-muted-foreground">
                 Per active customer
@@ -364,7 +350,7 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                ₹{analytics.customers.averageLifetimeValue.toFixed(2)}
+                ₹{analyticsData.customers.averageLifetimeValue.toFixed(2)}
               </div>
               <p className="text-xs text-muted-foreground">
                 Avg per customer
@@ -384,7 +370,7 @@ export default function AnalyticsPage() {
               <Package className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{analytics.inventory.totalProducts}</div>
+              <div className="text-2xl font-bold">{analyticsData.inventory.totalProducts}</div>
               <p className="text-xs text-muted-foreground">
                 Product types
               </p>
@@ -398,7 +384,7 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">
-                {analytics.inventory.totalStock}
+                {analyticsData.inventory.totalStock}
               </div>
               <p className="text-xs text-muted-foreground">
                 Cartons available
@@ -413,7 +399,7 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-yellow-600">
-                {analytics.inventory.lowStockProducts}
+                {analyticsData.inventory.lowStockProducts}
               </div>
               <p className="text-xs text-muted-foreground">
                 Need restock
@@ -428,7 +414,7 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-600">
-                {analytics.inventory.outOfStockProducts}
+                {analyticsData.inventory.outOfStockProducts}
               </div>
               <p className="text-xs text-muted-foreground">
                 Unavailable items
@@ -448,7 +434,7 @@ export default function AnalyticsPage() {
               <FileText className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{analytics.invoices.total}</div>
+              <div className="text-2xl font-bold">{analyticsData.invoices.total}</div>
               <p className="text-xs text-muted-foreground">
                 Generated invoices
               </p>
@@ -462,7 +448,7 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">
-                {analytics.invoices.paid}
+                {analyticsData.invoices.paid}
               </div>
               <p className="text-xs text-muted-foreground">
                 Fully settled
@@ -477,7 +463,7 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-yellow-600">
-                {analytics.invoices.pending}
+                {analyticsData.invoices.pending}
               </div>
               <p className="text-xs text-muted-foreground">
                 Awaiting payment
@@ -492,7 +478,7 @@ export default function AnalyticsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-600">
-                {analytics.invoices.overdue}
+                {analyticsData.invoices.overdue}
               </div>
               <p className="text-xs text-muted-foreground">
                 Past due date
@@ -503,13 +489,13 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Top Customers */}
-      {analytics.topCustomers && analytics.topCustomers.length > 0 && (
+      {analyticsData.topCustomers && analyticsData.topCustomers.length > 0 && (
         <div>
           <h2 className="text-lg font-semibold mb-4">Top Customers</h2>
           <Card>
             <CardContent className="pt-6">
               <div className="space-y-4">
-                {analytics.topCustomers.map((customer, index) => (
+                {analyticsData.topCustomers.map((customer, index) => (
                   <div key={customer._id} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-semibold">
@@ -535,13 +521,13 @@ export default function AnalyticsPage() {
       )}
 
       {/* Top Products */}
-      {analytics.topProducts && analytics.topProducts.length > 0 && (
+      {analyticsData.topProducts && analyticsData.topProducts.length > 0 && (
         <div>
           <h2 className="text-lg font-semibold mb-4">Top Selling Products</h2>
           <Card>
             <CardContent className="pt-6">
               <div className="space-y-4">
-                {analytics.topProducts.map((product, index) => (
+                {analyticsData.topProducts.map((product, index) => (
                   <div key={product._id} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary font-semibold">

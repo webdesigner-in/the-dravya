@@ -4,6 +4,7 @@ import StockMovement from '@/models/StockMovement';
 import Product from '@/models/Product';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
+import { generateMovementNumber } from '@/lib/numberGenerator';
 
 // GET all stock movements
 export async function GET(request) {
@@ -83,9 +84,40 @@ export async function POST(request) {
       );
     }
 
-    // Generate movement number
-    const movementCount = await StockMovement.countDocuments();
-    const movementNumber = `STK${String(movementCount + 1).padStart(6, '0')}`;
+    // Generate collision-safe movement number (crypto random, no countDocuments race)
+    const movementNumber = generateMovementNumber();
+
+    // Atomically update stock BEFORE creating the movement record.
+    // Using findOneAndUpdate eliminates the read-check-write race condition.
+    let updatedProduct;
+    if (type === 'in') {
+      // Adding stock: always safe, no floor check needed
+      updatedProduct = await Product.findOneAndUpdate(
+        { _id: product },
+        { $inc: { stock: quantity } },
+        { returnDocument: 'after' }
+      );
+    } else if (type === 'out' || type === 'damage') {
+      // Deducting stock: only succeeds if stock >= quantity (atomic)
+      updatedProduct = await Product.findOneAndUpdate(
+        { _id: product, stock: { $gte: quantity } },
+        { $inc: { stock: -quantity } },
+        { returnDocument: 'after' }
+      );
+      if (!updatedProduct) {
+        return NextResponse.json(
+          { error: `Insufficient stock. Available: ${productDoc.stock}` },
+          { status: 400 }
+        );
+      }
+    } else if (type === 'adjustment') {
+      // Direct set: atomic by definition
+      updatedProduct = await Product.findOneAndUpdate(
+        { _id: product },
+        { $set: { stock: quantity } },
+        { returnDocument: 'after' }
+      );
+    }
 
     // Create stock movement
     const movement = await StockMovement.create({
@@ -100,23 +132,6 @@ export async function POST(request) {
       notes,
       performedBy: authUser.userId,
     });
-
-    // Update product stock based on movement type
-    if (type === 'in') {
-      productDoc.stock += quantity;
-    } else if (type === 'out' || type === 'damage') {
-      if (productDoc.stock < quantity) {
-        return NextResponse.json(
-          { error: 'Insufficient stock' },
-          { status: 400 }
-        );
-      }
-      productDoc.stock -= quantity;
-    } else if (type === 'adjustment') {
-      productDoc.stock = quantity;
-    }
-
-    await productDoc.save();
 
     const populatedMovement = await StockMovement.findById(movement._id)
       .populate('product', 'name sku')

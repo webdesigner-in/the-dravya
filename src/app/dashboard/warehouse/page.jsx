@@ -31,23 +31,34 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Warehouse as WarehouseIcon, Edit, Trash2 } from "lucide-react";
-import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
+import { useWarehouses, useCreateWarehouse, useUpdateWarehouse, useDeleteWarehouse } from "@/hooks/useWarehouses";
+import { useUsers } from "@/hooks/useUsers";
 
 export default function WarehousePage() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
   const isAdmin = useAuthStore((state) => state.isAdmin());
   const hasShownAccessDenied = useRef(false);
-  const [warehouses, setWarehouses] = useState([]);
-  const [allLoadedWarehouses, setAllLoadedWarehouses] = useState([]); // Cache all loaded warehouses
-  const [users, setUsers] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false); // Loading more warehouses
-  const [hasMoreWarehouses, setHasMoreWarehouses] = useState(true); // Track if more warehouses available
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingWarehouse, setEditingWarehouse] = useState(null);
+  
+  // React Query hooks with infinite scroll
+  const { 
+    data, 
+    isLoading, 
+    fetchNextPage, 
+    hasNextPage, 
+    isFetchingNextPage 
+  } = useWarehouses({});
+  const { data: usersData } = useUsers({});
+  const createWarehouse = useCreateWarehouse();
+  const updateWarehouse = useUpdateWarehouse();
+  const deleteWarehouse = useDeleteWarehouse();
+  
+  // Flatten all pages into single array
+  const warehouses = data?.pages?.flatMap(page => page.warehouses) || [];
+  const users = usersData?.pages?.flatMap(page => page.users) || [];
 
   const [formData, setFormData] = useState({
     name: "",
@@ -80,18 +91,10 @@ export default function WarehousePage() {
     if (!isAdmin && !hasShownAccessDenied.current) {
       hasShownAccessDenied.current = true;
       router.push("/dashboard");
-      toast.error("Access denied. Warehouse management is only accessible to administrators.");
     }
   }, [isAdmin, router]);
 
-  useEffect(() => {
-    if (isAdmin) {
-      fetchWarehouses();
-      fetchUsers();
-    }
-  }, [isAdmin]);
-
-  // Infinite scroll implementation for warehouses
+  // Infinite scroll implementation
   useEffect(() => {
     const handleScroll = () => {
       const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
@@ -100,88 +103,14 @@ export default function WarehousePage() {
       
       const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
       
-      if (isNearBottom && !isLoading && !isLoadingMore && hasMoreWarehouses) {
-        loadMoreWarehouses();
+      if (isNearBottom && !isLoading && !isFetchingNextPage && hasNextPage) {
+        fetchNextPage();
       }
     };
 
-    let scrollTimeout;
-    const throttledScroll = () => {
-      clearTimeout(scrollTimeout);
-      scrollTimeout = setTimeout(handleScroll, 100);
-    };
-
-    window.addEventListener('scroll', throttledScroll);
-    return () => {
-      window.removeEventListener('scroll', throttledScroll);
-      clearTimeout(scrollTimeout);
-    };
-  }, [isLoading, isLoadingMore, hasMoreWarehouses]);
-
-  const fetchWarehouses = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch("/api/warehouses?page=1&limit=20");
-      if (response.ok) {
-        const data = await response.json();
-        const warehouseData = data.warehouses || [];
-        setWarehouses(warehouseData);
-        setAllLoadedWarehouses(warehouseData);
-        
-        // Check if there are more warehouses to load
-        if (warehouseData.length < 20) {
-          setHasMoreWarehouses(false);
-        }
-      }
-    } catch (error) {
-      toast.error("Failed to fetch warehouses");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Load more warehouses function
-  const loadMoreWarehouses = async () => {
-    if (isLoadingMore || !hasMoreWarehouses) return;
-    
-    setIsLoadingMore(true);
-    try {
-      const nextPage = Math.floor(allLoadedWarehouses.length / 20) + 1;
-      const response = await fetch(`/api/warehouses?page=${nextPage}&limit=20`);
-      
-      if (response.ok) {
-        const data = await response.json();
-        const newWarehouses = data.warehouses || [];
-        
-        if (newWarehouses.length === 0) {
-          setHasMoreWarehouses(false);
-        } else {
-          setAllLoadedWarehouses(prev => [...prev, ...newWarehouses]);
-          setWarehouses(prev => [...prev, ...newWarehouses]);
-          
-          if (newWarehouses.length < 20) {
-            setHasMoreWarehouses(false);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load more warehouses:', error);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  };
-
-  const fetchUsers = async () => {
-    try {
-      const response = await fetch("/api/users");
-      if (response.ok) {
-        const data = await response.json();
-        setUsers(data.users || []);
-      }
-    } catch (error) {
-      // Error already logged by logger
-    }
-  };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [isLoading, isFetchingNextPage, hasNextPage, fetchNextPage]);
 
   const resetForm = () => {
     setFormData({
@@ -240,36 +169,21 @@ export default function WarehousePage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsSubmitting(true);
 
     try {
-      const url = editingWarehouse
-        ? `/api/warehouses/${editingWarehouse._id}`
-        : "/api/warehouses";
-      const method = editingWarehouse ? "PUT" : "POST";
-
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to save warehouse");
+      if (editingWarehouse) {
+        await updateWarehouse.mutateAsync({
+          warehouseId: editingWarehouse._id,
+          updates: formData,
+        });
+      } else {
+        await createWarehouse.mutateAsync(formData);
       }
 
-      toast.success(
-        `Warehouse ${editingWarehouse ? "updated" : "created"} successfully!`
-      );
       resetForm();
       setIsDialogOpen(false);
-      fetchWarehouses();
     } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setIsSubmitting(false);
+      // Error toast shown automatically by hook
     }
   };
 
@@ -277,18 +191,9 @@ export default function WarehousePage() {
     if (!confirm("Are you sure you want to delete this warehouse?")) return;
 
     try {
-      const response = await fetch(`/api/warehouses/${id}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to delete warehouse");
-      }
-
-      toast.success("Warehouse deleted successfully!");
-      fetchWarehouses();
+      await deleteWarehouse.mutateAsync(id);
     } catch (error) {
-      toast.error(error.message);
+      // Error toast shown automatically by hook
     }
   };
 
@@ -629,8 +534,8 @@ export default function WarehousePage() {
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting
+                  <Button type="submit" disabled={createWarehouse.isPending || updateWarehouse.isPending}>
+                    {createWarehouse.isPending || updateWarehouse.isPending
                       ? "Saving..."
                       : editingWarehouse
                       ? "Update"
@@ -733,7 +638,7 @@ export default function WarehousePage() {
         )}
         
         {/* Loading more indicator */}
-        {isLoadingMore && (
+        {isFetchingNextPage && (
           <div className="col-span-full flex justify-center py-4">
             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
             <span className="ml-2 text-sm text-muted-foreground">Loading more warehouses...</span>
@@ -741,7 +646,7 @@ export default function WarehousePage() {
         )}
         
         {/* End of results indicator */}
-        {!isLoading && !isLoadingMore && !hasMoreWarehouses && warehouses.length > 0 && (
+        {!hasNextPage && warehouses.length > 0 && (
           <div className="col-span-full text-center py-4">
             <p className="text-sm text-muted-foreground">No more warehouses to load</p>
           </div>

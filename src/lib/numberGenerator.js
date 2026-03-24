@@ -75,3 +75,20 @@ export function generateRouteNumber() {
   
   return `RT-${year}${month}${day}-${uniqueId}`;
 }
+
+/**
+ * Generate unique stock movement number
+ * Format: STK-YYYYMMDD-XXXXXXXX
+ * Example: STK-20260302-E1A7C3F9
+ *
+ * Uses crypto.randomBytes — no database counter, no collision risk.
+ */
+export function generateMovementNumber() {
+  const now = new Date();
+  const year  = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day   = String(now.getDate()).padStart(2, '0');
+  const uniqueId = generateShortId();
+
+  return `STK-${year}${month}${day}-${uniqueId}`;
+}

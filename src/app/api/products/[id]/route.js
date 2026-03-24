@@ -67,7 +67,7 @@ export async function PUT(request, { params }) {
       const updatedProduct = await Product.findByIdAndUpdate(
         id,
         { $set: body },
-        { new: true, runValidators: true, returnDocument: 'after' }
+        { runValidators: true, returnDocument: 'after' }
       );
 
       if (!updatedProduct) {

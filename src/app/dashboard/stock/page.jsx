@@ -37,22 +37,31 @@ import {
   RefreshCw,
   Package,
 } from "lucide-react";
-import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
+import { useStockMovements, useCreateStockMovement } from "@/hooks/useStock";
+import { useProducts } from "@/hooks/useProducts";
 
 export default function StockPage() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
   const isAdmin = useAuthStore((state) => state.isAdmin());
   const hasShownAccessDenied = useRef(false);
-  const [products, setProducts] = useState([]);
-  const [movements, setMovements] = useState([]);
-  const [allLoadedMovements, setAllLoadedMovements] = useState([]); // Cache all loaded movements
-  const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false); // Loading more movements
-  const [hasMoreMovements, setHasMoreMovements] = useState(true); // Track if more movements available
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // React Query hooks with infinite scroll
+  const { data: productsData } = useProducts({});
+  const { 
+    data, 
+    isLoading, 
+    fetchNextPage, 
+    hasNextPage, 
+    isFetchingNextPage 
+  } = useStockMovements({});
+  const createStockMovement = useCreateStockMovement();
+  
+  const products = productsData?.products || [];
+  // Flatten all pages into single array
+  const movements = data?.pages?.flatMap(page => page.movements) || [];
 
   const [formData, setFormData] = useState({
     product: "",
@@ -63,87 +72,14 @@ export default function StockPage() {
     notes: "",
   });
 
-  const fetchProducts = async () => {
-    try {
-      const response = await fetch("/api/products");
-      if (response.ok) {
-        const data = await response.json();
-        setProducts(data.products || []);
-      }
-    } catch (error) {
-      toast.error("Failed to fetch products");
-    }
-  };
-
-  const fetchMovements = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch("/api/stock/movements?page=1&limit=20");
-      if (response.ok) {
-        const data = await response.json();
-        const movementData = data.movements || [];
-        setMovements(movementData);
-        setAllLoadedMovements(movementData);
-        
-        // Check if there are more movements to load
-        if (movementData.length < 20) {
-          setHasMoreMovements(false);
-        }
-      }
-    } catch (error) {
-      toast.error("Failed to fetch stock movements");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Load more movements function
-  const loadMoreMovements = async () => {
-    if (isLoadingMore || !hasMoreMovements) return;
-    
-    setIsLoadingMore(true);
-    try {
-      const nextPage = Math.floor(allLoadedMovements.length / 20) + 1;
-      const response = await fetch(`/api/stock/movements?page=${nextPage}&limit=20`);
-      
-      if (response.ok) {
-        const data = await response.json();
-        const newMovements = data.movements || [];
-        
-        if (newMovements.length === 0) {
-          setHasMoreMovements(false);
-        } else {
-          setAllLoadedMovements(prev => [...prev, ...newMovements]);
-          setMovements(prev => [...prev, ...newMovements]);
-          
-          if (newMovements.length < 20) {
-            setHasMoreMovements(false);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load more movements:', error);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  };
-
   useEffect(() => {
     if (!isAdmin && !hasShownAccessDenied.current) {
       hasShownAccessDenied.current = true;
       router.push("/dashboard");
-      toast.error("Access denied. Stock management is only accessible to administrators.");
     }
   }, [isAdmin, router]);
 
-  useEffect(() => {
-    if (isAdmin) {
-      fetchProducts();
-      fetchMovements();
-    }
-  }, [isAdmin]);
-
-  // Infinite scroll implementation for stock movements
+  // Infinite scroll implementation
   useEffect(() => {
     const handleScroll = () => {
       const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
@@ -152,23 +88,14 @@ export default function StockPage() {
       
       const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
       
-      if (isNearBottom && !isLoading && !isLoadingMore && hasMoreMovements) {
-        loadMoreMovements();
+      if (isNearBottom && !isLoading && !isFetchingNextPage && hasNextPage) {
+        fetchNextPage();
       }
     };
 
-    let scrollTimeout;
-    const throttledScroll = () => {
-      clearTimeout(scrollTimeout);
-      scrollTimeout = setTimeout(handleScroll, 100);
-    };
-
-    window.addEventListener('scroll', throttledScroll);
-    return () => {
-      window.removeEventListener('scroll', throttledScroll);
-      clearTimeout(scrollTimeout);
-    };
-  }, [isLoading, isLoadingMore, hasMoreMovements]);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [isLoading, isFetchingNextPage, hasNextPage, fetchNextPage]);
 
   const resetForm = () => {
     setFormData({
@@ -183,7 +110,6 @@ export default function StockPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsSubmitting(true);
 
     try {
       const payload = {
@@ -195,27 +121,11 @@ export default function StockPage() {
         notes: formData.notes,
       };
 
-      const response = await fetch("/api/stock/movements", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to record stock movement");
-      }
-
-      toast.success("Stock movement recorded successfully!");
+      await createStockMovement.mutateAsync(payload);
       resetForm();
       setIsDialogOpen(false);
-      fetchProducts();
-      fetchMovements();
     } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setIsSubmitting(false);
+      // Error toast shown automatically by hook
     }
   };
 
@@ -389,8 +299,8 @@ export default function StockPage() {
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? "Recording..." : "Record Movement"}
+                <Button type="submit" disabled={createStockMovement.isPending}>
+                  {createStockMovement.isPending ? "Recording..." : "Record Movement"}
                 </Button>
               </DialogFooter>
             </form>
@@ -493,7 +403,7 @@ export default function StockPage() {
               ))}
               
               {/* Loading more indicator */}
-              {isLoadingMore && (
+              {isFetchingNextPage && (
                 <div className="flex justify-center py-4">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
                   <span className="ml-2 text-sm text-muted-foreground">Loading more movements...</span>
@@ -501,7 +411,7 @@ export default function StockPage() {
               )}
               
               {/* End of results indicator */}
-              {!isLoading && !isLoadingMore && !hasMoreMovements && movements.length > 0 && (
+              {!hasNextPage && movements.length > 0 && (
                 <div className="text-center py-4">
                   <p className="text-sm text-muted-foreground">No more movements to load</p>
                 </div>

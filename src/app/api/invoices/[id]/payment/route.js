@@ -33,34 +33,46 @@ export async function POST(request, { params }) {
       );
     }
 
-    // Get invoice with order
-    const invoice = await Invoice.findById(id).populate('order');
+    const paymentAmount = parseFloat(amount);
+
+    // Atomic balance check + deduction — eliminates the read-check-write race
+    // condition where two concurrent payments both pass the balance check.
+    // findOneAndUpdate only succeeds if balanceAmount >= paymentAmount AND the
+    // invoice is not already fully paid.
+    const invoice = await Invoice.findOneAndUpdate(
+      {
+        _id: id,
+        status: { $ne: 'paid' },
+        balanceAmount: { $gte: paymentAmount },
+      },
+      {
+        $inc: { paidAmount: paymentAmount, balanceAmount: -paymentAmount },
+      },
+      { returnDocument: 'after' }
+    ).populate('order');
 
     if (!invoice) {
+      // Distinguish between "not found", "already paid", and "exceeds balance"
+      const existing = await Invoice.findById(id).select('status balanceAmount').lean();
+      if (!existing) {
+        return NextResponse.json({ error: 'Invoice not found' }, { status: 404 });
+      }
+      if (existing.status === 'paid' || existing.balanceAmount <= 0) {
+        return NextResponse.json({ error: 'Invoice is already fully paid' }, { status: 400 });
+      }
       return NextResponse.json(
-        { error: 'Invoice not found' },
-        { status: 404 }
-      );
-    }
-
-    // Check if already fully paid
-    if (invoice.status === 'paid' && invoice.balanceAmount <= 0) {
-      return NextResponse.json(
-        { error: 'Invoice is already fully paid' },
+        { error: `Payment amount (₹${paymentAmount}) exceeds balance due (₹${existing.balanceAmount})` },
         { status: 400 }
       );
     }
 
-    // Validate payment amount doesn't exceed balance
-    const paymentAmount = parseFloat(amount);
-    if (paymentAmount > invoice.balanceAmount) {
-      return NextResponse.json(
-        { error: `Payment amount (₹${paymentAmount}) exceeds balance due (₹${invoice.balanceAmount})` },
-        { status: 400 }
-      );
-    }
+    // Balance deducted atomically above. Now do the non-critical follow-up writes.
+    const newPaidAmount    = invoice.paidAmount;     // already updated by findOneAndUpdate
+    const newBalanceAmount = invoice.balanceAmount;  // already updated
 
-    // Create transaction for this payment
+    let newStatus = newBalanceAmount <= 0 ? 'paid' : 'partial';
+
+    // Create transaction record
     const transactionNumber = generateTransactionNumber();
     const transactionData = {
       transactionNumber,
@@ -76,27 +88,12 @@ export async function POST(request, { params }) {
       notes: notes || `Payment ${invoice.paymentHistory.length + 1}`,
       createdBy: authUser.userId,
     };
-
-    // Add customer only if it exists (not for guest orders)
-    if (invoice.customer) {
-      transactionData.customer = invoice.customer;
-    }
+    if (invoice.customer) transactionData.customer = invoice.customer;
 
     const transaction = await Transaction.create(transactionData);
 
-    // Update invoice
-    const newPaidAmount = invoice.paidAmount + paymentAmount;
-    const newBalanceAmount = invoice.totalAmount - newPaidAmount;
-
-    // Determine new status
-    let newStatus = 'partial';
-    if (newBalanceAmount <= 0) {
-      newStatus = 'paid';
-    } else if (newPaidAmount === 0) {
-      newStatus = 'sent';
-    }
-
-    // Add to payment history
+    // Persist status, payment history, and optional dueDate clear
+    invoice.status = newStatus;
     invoice.paymentHistory.push({
       amount: paymentAmount,
       paymentMethod: paymentMethod || 'cash',
@@ -105,30 +102,15 @@ export async function POST(request, { params }) {
       notes: notes || '',
       recordedBy: authUser.userId,
     });
-
-    invoice.paidAmount = newPaidAmount;
-    invoice.balanceAmount = newBalanceAmount;
-    invoice.status = newStatus;
-
-    // Clear due date if fully paid
-    if (newStatus === 'paid') {
-      invoice.dueDate = null;
-    }
-
+    if (newStatus === 'paid') invoice.dueDate = null;
     await invoice.save();
 
     // Update order payment status
     const order = invoice.order;
     order.paidAmount = newPaidAmount;
-    
-    if (newPaidAmount >= order.finalAmount) {
-      order.paymentStatus = 'paid';
-    } else if (newPaidAmount > 0) {
-      order.paymentStatus = 'partial';
-    } else {
-      order.paymentStatus = 'unpaid';
-    }
-    
+    order.paymentStatus = newPaidAmount >= order.finalAmount
+      ? 'paid'
+      : newPaidAmount > 0 ? 'partial' : 'unpaid';
     await order.save();
 
     // Populate and return updated invoice

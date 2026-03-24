@@ -3,7 +3,6 @@ import connectDB from '@/lib/mongodb';
 import Transaction from '@/models/Transaction';
 import Customer from '@/models/Customer';
 import Order from '@/models/Order';
-import User from '@/models/User';
 import { getAuthUser } from '@/lib/auth';
 import { generateTransactionNumber } from '@/lib/numberGenerator';
 import { handleApiError } from '@/lib/errorHandler';
@@ -65,45 +64,61 @@ export async function GET(request) {
       }
     }
 
-    const transactions = await Transaction.find(filter)
-      .populate('customer', 'name phone')
-      .populate('order', 'orderNumber orderType guestInfo')
-      .populate('createdBy', 'name')
-      .sort({ date: -1 });
+    // Build DB-level search filter so we never fetch the full collection into memory.
+    // Searching populated fields (customer.name, order.orderNumber) requires a
+    // pre-lookup of matching IDs — same pattern used by the orders endpoint.
+    if (search && search.trim()) {
+      const s = search.trim();
+      const [matchingCustomers, matchingOrders] = await Promise.all([
+        Customer.find({ name: { $regex: s, $options: 'i' } })
+          .select('_id').lean().limit(50).maxTimeMS(3000),
+        Order.find({ orderNumber: { $regex: `^${s}`, $options: 'i' } })
+          .select('_id').lean().limit(50).maxTimeMS(3000),
+      ]);
 
-    // Apply search filter (after population)
-    let filteredTransactions = transactions;
-    if (search) {
-      const searchLower = search.toLowerCase();
-      filteredTransactions = transactions.filter((transaction) => {
-        return (
-          transaction.description?.toLowerCase().includes(searchLower) ||
-          transaction.reference?.toLowerCase().includes(searchLower) ||
-          transaction.transactionNumber?.toLowerCase().includes(searchLower) ||
-          transaction.customer?.name?.toLowerCase().includes(searchLower) ||
-          transaction.order?.orderNumber?.toLowerCase().includes(searchLower)
-        );
-      });
+      const orClauses = [
+        { transactionNumber: { $regex: s, $options: 'i' } },
+        { description:       { $regex: s, $options: 'i' } },
+        { reference:         { $regex: s, $options: 'i' } },
+      ];
+      if (matchingCustomers.length) orClauses.push({ customer: { $in: matchingCustomers.map(c => c._id) } });
+      if (matchingOrders.length)   orClauses.push({ order:    { $in: matchingOrders.map(o => o._id) } });
+      filter.$or = orClauses;
     }
 
-    // Calculate totals from filtered transactions
-    const totalIncome = filteredTransactions
-      .filter((t) => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    const totalExpense = filteredTransactions
-      .filter((t) => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
-
-    // Calculate pagination
-    const totalTransactions = filteredTransactions.length;
-    const totalPages = Math.ceil(totalTransactions / limit);
     const skip = (page - 1) * limit;
-    const paginatedTransactions = filteredTransactions.slice(skip, skip + limit);
+
+    // Run paginated fetch + total count + income/expense aggregation in parallel
+    const [transactions, totalTransactions, totals] = await Promise.all([
+      Transaction.find(filter)
+        .populate('customer', 'name phone')
+        .populate('order', 'orderNumber orderType guestInfo')
+        .populate('createdBy', 'name')
+        .sort({ date: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean()
+        .maxTimeMS(10000),
+      Transaction.countDocuments(filter).maxTimeMS(5000),
+      Transaction.aggregate([
+        { $match: filter },
+        {
+          $group: {
+            _id: null,
+            totalIncome:  { $sum: { $cond: [{ $eq: ['$type', 'income']  }, '$amount', 0] } },
+            totalExpense: { $sum: { $cond: [{ $eq: ['$type', 'expense'] }, '$amount', 0] } },
+          },
+        },
+      ]).option({ maxTimeMS: 5000 }),
+    ]);
+
+    const totalIncome  = totals[0]?.totalIncome  ?? 0;
+    const totalExpense = totals[0]?.totalExpense ?? 0;
+    const totalPages   = Math.ceil(totalTransactions / limit);
 
     return NextResponse.json({
       success: true,
-      transactions: paginatedTransactions,
+      transactions,
       summary: {
         totalIncome,
         totalExpense,

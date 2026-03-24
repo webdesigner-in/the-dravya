@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { Button } from "@/components/ui/button";
@@ -43,18 +43,34 @@ import { Textarea } from "@/components/ui/textarea";
 import { Plus, Pencil, Trash2, Package, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
+import { useProducts, useCreateProduct, useUpdateProduct, useDeleteProduct } from "@/hooks/useProducts";
+import { useEffect } from "react";
 
 export default function ProductsPage() {
   const router = useRouter();
   const isAdmin = useAuthStore((state) => state.isAdmin());
-  const [products, setProducts] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const hasShownAccessDenied = useRef(false);
+  
+  // React Query hooks with infinite scroll
+  const { 
+    data, 
+    isLoading, 
+    error,
+    fetchNextPage, 
+    hasNextPage, 
+    isFetchingNextPage 
+  } = useProducts({});
+  const createProduct = useCreateProduct();
+  const updateProduct = useUpdateProduct();
+  const deleteProduct = useDeleteProduct();
+  
+  // Flatten all pages into single array
+  const products = data?.pages?.flatMap(page => page.products) || [];
+  
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState(null);
   const [editingProduct, setEditingProduct] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const hasShownAccessDenied = useRef(false);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -71,21 +87,6 @@ export default function ProductsPage() {
     minStockLevel: "10",
   });
 
-  const fetchProducts = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch("/api/products");
-      if (response.ok) {
-        const data = await response.json();
-        setProducts(data.products || []);
-      }
-    } catch (error) {
-      toast.error("Failed to fetch products");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   // Redirect if not admin
   useEffect(() => {
     if (!isAdmin && !hasShownAccessDenied.current) {
@@ -95,11 +96,23 @@ export default function ProductsPage() {
     }
   }, [isAdmin, router]);
 
+  // Infinite scroll implementation
   useEffect(() => {
-    if (isAdmin) {
-      fetchProducts();
-    }
-  }, [isAdmin]);
+    const handleScroll = () => {
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const windowHeight = window.innerHeight;
+      const documentHeight = document.documentElement.scrollHeight;
+      
+      const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
+      
+      if (isNearBottom && !isLoading && !isFetchingNextPage && hasNextPage) {
+        fetchNextPage();
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [isLoading, isFetchingNextPage, hasNextPage, fetchNextPage]);
 
   const resetForm = () => {
     setFormData({
@@ -140,7 +153,6 @@ export default function ProductsPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsSubmitting(true);
 
     try {
       const payload = {
@@ -160,33 +172,19 @@ export default function ProductsPage() {
         minStockLevel: parseInt(formData.minStockLevel),
       };
 
-      const url = editingProduct
-        ? `/api/products/${editingProduct._id}`
-        : "/api/products";
-      const method = editingProduct ? "PUT" : "POST";
-
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to save product");
+      if (editingProduct) {
+        await updateProduct.mutateAsync({
+          productId: editingProduct._id,
+          updates: payload,
+        });
+      } else {
+        await createProduct.mutateAsync(payload);
       }
 
-      toast.success(
-        editingProduct ? "Product updated successfully!" : "Product created successfully!"
-      );
       resetForm();
       setIsDialogOpen(false);
-      fetchProducts();
     } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setIsSubmitting(false);
+      // Error toast is shown automatically by the hook
     }
   };
 
@@ -199,20 +197,11 @@ export default function ProductsPage() {
     if (!productToDelete) return;
 
     try {
-      const response = await fetch(`/api/products/${productToDelete._id}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to delete product");
-      }
-
-      toast.success("Product deleted successfully!");
-      fetchProducts();
+      await deleteProduct.mutateAsync(productToDelete._id);
+      setIsDeleteDialogOpen(false);
+      setProductToDelete(null);
     } catch (error) {
-      toast.error(error.message);
-    } finally {
+      // Error toast is shown automatically by the hook
       setIsDeleteDialogOpen(false);
       setProductToDelete(null);
     }
@@ -450,8 +439,11 @@ export default function ProductsPage() {
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting
+                  <Button 
+                    type="submit" 
+                    disabled={createProduct.isPending || updateProduct.isPending}
+                  >
+                    {createProduct.isPending || updateProduct.isPending
                       ? "Saving..."
                       : editingProduct
                       ? "Update Product"
@@ -476,6 +468,11 @@ export default function ProductsPage() {
           {isLoading ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+            </div>
+          ) : error ? (
+            <div className="text-center py-8">
+              <p className="text-red-600">Failed to load products</p>
+              <p className="text-sm text-muted-foreground mt-2">{error.message}</p>
             </div>
           ) : products.length === 0 ? (
             <div className="text-center py-8">
@@ -555,6 +552,21 @@ export default function ProductsPage() {
                   </CardContent>
                 </Card>
               ))}
+              
+              {/* Loading more indicator */}
+              {isFetchingNextPage && (
+                <div className="col-span-full flex justify-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+                  <span className="ml-2 text-sm text-muted-foreground">Loading more products...</span>
+                </div>
+              )}
+              
+              {/* End of results indicator */}
+              {!hasNextPage && products.length > 0 && (
+                <div className="col-span-full text-center py-4">
+                  <p className="text-sm text-muted-foreground">No more products to load</p>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
@@ -579,8 +591,9 @@ export default function ProductsPage() {
             <AlertDialogAction
               onClick={handleDeleteConfirm}
               className="bg-red-600 hover:bg-red-700"
+              disabled={deleteProduct.isPending}
             >
-              Delete
+              {deleteProduct.isPending ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

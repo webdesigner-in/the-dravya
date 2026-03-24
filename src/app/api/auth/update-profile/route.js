@@ -48,7 +48,7 @@ export async function PUT(request) {
           address,
         },
       },
-      { new: true, returnDocument: 'after' }
+      { returnDocument: 'after' }
     ).select('-password');
 
     if (!user) {

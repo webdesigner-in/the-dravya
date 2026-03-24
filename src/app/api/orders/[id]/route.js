@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Order from '@/models/Order';
+import Product from '@/models/Product';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
 import { retryOperation, delay } from '@/lib/retryHelper';
@@ -40,9 +41,9 @@ export async function GET(request, { params }) {
     });
   } catch (error) {
     return NextResponse.json(
-      { 
-        error: error.message || 'Failed to fetch order',
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      {
+        error: process.env.NODE_ENV !== 'production' ? error.message : 'Failed to fetch order',
+        details: process.env.NODE_ENV !== 'production' ? error.stack : undefined,
       },
       { status: 500 }
     );
@@ -81,13 +82,10 @@ export async function PUT(request, { params }) {
       );
     }
 
-    // If items are being updated, we need to recalculate totals and manage stock
+    // If items are being updated, recalculate totals and atomically swap stock
     if (body.items) {
-      const Product = (await import('@/models/Product')).default;
-      
-      // Get the current order to restore stock
       const currentOrder = await Order.findById(id).populate('items.product');
-      
+
       if (!currentOrder) {
         return NextResponse.json(
           { error: 'Order not found' },
@@ -95,78 +93,102 @@ export async function PUT(request, { params }) {
         );
       }
 
-      // Restore stock from old items
-      for (const item of currentOrder.items) {
-        const product = await Product.findById(item.product._id);
-        if (product) {
-          product.stock += item.quantity;
-          await product.save();
-        }
+      // Atomically restore stock from old items (batch $inc — always safe, no check needed)
+      if (currentOrder.items.length > 0) {
+        await Product.bulkWrite(
+          currentOrder.items.map(item => ({
+            updateOne: {
+              filter: { _id: item.product._id },
+              update: { $inc: { stock: item.quantity } },
+            },
+          }))
+        );
       }
 
-      // Validate and process new items
+      // Validate new items (read-only) and atomically deduct stock
       let subtotalAtOriginalPrice = 0;
-      let subtotalAtCustomPrice = 0;
+      let subtotalAtCustomPrice   = 0;
       const validatedItems = [];
+      const deducted       = [];
 
       for (const item of body.items) {
-        const product = await Product.findById(item.product);
+        const product = await Product.findById(item.product).select('name price').lean();
         if (!product) {
+          // Rollback restored stock before returning
+          await Product.bulkWrite(
+            currentOrder.items.map(i => ({
+              updateOne: {
+                filter: { _id: i.product._id },
+                update: { $inc: { stock: -i.quantity } },
+              },
+            }))
+          ).catch(() => {});
           return NextResponse.json(
             { error: `Product not found: ${item.product}` },
             { status: 404 }
           );
         }
 
-        // Check stock availability
-        if (product.stock < item.quantity) {
+        const updated = await Product.findOneAndUpdate(
+          { _id: item.product, stock: { $gte: item.quantity } },
+          { $inc: { stock: -item.quantity } },
+          { returnDocument: 'after' }
+        );
+
+        if (!updated) {
+          // Rollback: re-deduct the restored old stock AND undo successful new deductions
+          const rollbackOps = [
+            ...currentOrder.items.map(i => ({
+              updateOne: {
+                filter: { _id: i.product._id },
+                update: { $inc: { stock: -i.quantity } },
+              },
+            })),
+            ...deducted.map(d => ({
+              updateOne: {
+                filter: { _id: d.productId },
+                update: { $inc: { stock: d.quantity } },
+              },
+            })),
+          ];
+          await Product.bulkWrite(rollbackOps).catch(() => {});
+          const current = await Product.findById(item.product).select('stock').lean();
           return NextResponse.json(
-            { error: `Insufficient stock for ${product.name}. Available: ${product.stock}` },
+            { error: `Insufficient stock for ${product.name}. Available: ${current?.stock ?? 0}` },
             { status: 400 }
           );
         }
 
-        // Calculate at original price
-        const originalPrice = parseFloat(product.price);
-        const originalSubtotal = item.quantity * originalPrice;
-        subtotalAtOriginalPrice += originalSubtotal;
+        deducted.push({ productId: item.product, quantity: item.quantity });
 
-        // Use custom price if provided, otherwise use product price
-        const itemPrice = item.customPrice ? parseFloat(item.customPrice) : originalPrice;
-        const customSubtotal = item.quantity * itemPrice;
-        subtotalAtCustomPrice += customSubtotal;
+        const originalPrice      = parseFloat(product.price);
+        const itemPrice          = item.customPrice ? parseFloat(item.customPrice) : originalPrice;
+        const customSubtotal     = item.quantity * itemPrice;
+        subtotalAtOriginalPrice += item.quantity * originalPrice;
+        subtotalAtCustomPrice   += customSubtotal;
 
-        // Calculate discount percentage
-        const discountPercentage = originalPrice > itemPrice ? 
-          Math.round(((originalPrice - itemPrice) / originalPrice) * 100) : 0;
+        const discountPercentage = originalPrice > itemPrice
+          ? Math.round(((originalPrice - itemPrice) / originalPrice) * 100)
+          : 0;
 
         validatedItems.push({
-          product: product._id,
-          quantity: item.quantity,
-          price: itemPrice,
-          originalPrice: originalPrice, // Store original price for invoice display
-          discountPercentage: discountPercentage, // Store discount percentage
-          subtotal: customSubtotal,
+          product:            product._id,
+          quantity:           item.quantity,
+          price:              itemPrice,
+          originalPrice,
+          discountPercentage,
+          subtotal:           customSubtotal,
         });
-
-        // Reduce stock
-        product.stock -= item.quantity;
-        await product.save();
       }
 
-      // Calculate discount and totals
       const calculatedDiscount = subtotalAtOriginalPrice - subtotalAtCustomPrice;
-      const discountAmount = calculatedDiscount > 0 ? calculatedDiscount : 0;
-      const taxAmount = currentOrder.tax || 0;
-      
-      const totalAmount = subtotalAtOriginalPrice;
-      const finalAmount = subtotalAtCustomPrice + taxAmount;
+      const discountAmount     = calculatedDiscount > 0 ? calculatedDiscount : 0;
+      const taxAmount          = currentOrder.tax || 0;
 
-      // Update order with new items and recalculated totals
-      body.items = validatedItems;
-      body.totalAmount = totalAmount;
-      body.discount = discountAmount;
-      body.finalAmount = finalAmount;
+      body.items       = validatedItems;
+      body.totalAmount = subtotalAtOriginalPrice;
+      body.discount    = discountAmount;
+      body.finalAmount = subtotalAtCustomPrice + taxAmount;
     }
 
     // Update order with retry logic
@@ -242,17 +264,19 @@ export async function DELETE(request, { params }) {
     }
 
     // Import models needed for cascade deletion
-    const Product = (await import('@/models/Product')).default;
     const Invoice = (await import('@/models/Invoice')).default;
     const Transaction = (await import('@/models/Transaction')).default;
 
-    // 1. Restore stock for all items in the order
-    for (const item of order.items) {
-      const product = await Product.findById(item.product._id);
-      if (product) {
-        product.stock += item.quantity;
-        await product.save();
-      }
+    // 1. Restore stock for all items atomically (batch $inc — no race condition)
+    if (order.items.length > 0) {
+      await Product.bulkWrite(
+        order.items.map(item => ({
+          updateOne: {
+            filter: { _id: item.product._id },
+            update: { $inc: { stock: item.quantity } },
+          },
+        }))
+      );
     }
 
     // 2. Delete all related invoices
@@ -275,9 +299,9 @@ export async function DELETE(request, { params }) {
     });
   } catch (error) {
     return NextResponse.json(
-      { 
-        error: error.message || 'Failed to delete order',
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      {
+        error: process.env.NODE_ENV !== 'production' ? error.message : 'Failed to delete order',
+        details: process.env.NODE_ENV !== 'production' ? error.stack : undefined,
       },
       { status: 500 }
     );

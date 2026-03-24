@@ -28,11 +28,8 @@ export function handleApiError(error, defaultMessage = 'An error occurred') {
       : 'Duplicate record found';
     statusCode = 409;
   }
-  // Custom error with message
+  // Custom error with message — determine status code from content
   else if (error.message) {
-    errorMessage = error.message;
-    
-    // Check if it's a known error type
     if (error.message.includes('not found')) {
       statusCode = 404;
     } else if (error.message.includes('Unauthorized') || error.message.includes('permission')) {
@@ -40,6 +37,12 @@ export function handleApiError(error, defaultMessage = 'An error occurred') {
     } else if (error.message.includes('Invalid') || error.message.includes('required')) {
       statusCode = 400;
     }
+    // For 4xx errors the message is intentional (user-facing).
+    // For 5xx errors in production, return only the generic defaultMessage to
+    // avoid leaking internal implementation details (file paths, DB schema, etc.)
+    errorMessage = statusCode < 500 || process.env.NODE_ENV !== 'production'
+      ? error.message
+      : defaultMessage;
   }
   
   return {

@@ -9,7 +9,7 @@ if (!JWT_SECRET) {
 
 export function generateToken(userId, role) {
   return jwt.sign({ userId, role }, JWT_SECRET, {
-    expiresIn: '7d',
+    expiresIn: '24h',
   });
 }
 
@@ -39,7 +39,7 @@ export async function setAuthCookie(token) {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: 60 * 60 * 24, // 24 hours
     path: '/',
   });
 }

@@ -55,21 +55,25 @@ import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { getUserFriendlyError } from "@/lib/errorMessages";
+import { useOrders, useCreateOrder, useUpdateOrder, useDeleteOrder } from "@/hooks/useOrders";
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function OrdersPage() {
   const searchParams = useSearchParams();
   const customerIdFromUrl = searchParams.get("customer");
   const isAdmin = useAuthStore((state) => state.isAdmin());
+  const queryClient = useQueryClient();
   
-  const [orders, setOrders] = useState([]);
-  const [allLoadedOrders, setAllLoadedOrders] = useState([]); // Cache all loaded orders
+  // Filters - MUST be declared BEFORE useOrders hook
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [paymentFilter, setPaymentFilter] = useState("all");
+  const [dateFilter, setDateFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("date");
+  const [customerSearchQuery, setCustomerSearchQuery] = useState("");
+  
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false); // New: Loading more orders
-  const [isSearchingDB, setIsSearchingDB] = useState(false); // Separate loading state for DB search
-  const [hasMoreOrders, setHasMoreOrders] = useState(true); // New: Track if more orders available
-  const [ordersLoaded, setOrdersLoaded] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
@@ -93,14 +97,28 @@ export default function OrdersPage() {
     deliveryDate: "",
   });
   
-  // Pagination state (kept for API compatibility)
-  const [pagination, setPagination] = useState({
-    currentPage: 1,
-    totalPages: 1,
-    totalItems: 0,
-    itemsPerPage: 20,
-    hasMore: false,
+  // React Query hooks with infinite scroll
+  const { 
+    data, 
+    isLoading, 
+    error,
+    fetchNextPage, 
+    hasNextPage, 
+    isFetchingNextPage 
+  } = useOrders({ 
+    search: searchQuery || undefined,
+    status: statusFilter !== "all" ? statusFilter : undefined,
+    paymentStatus: paymentFilter !== "all" ? paymentFilter : undefined,
+    customer: customerIdFromUrl || undefined,
+    date: dateFilter !== "all" ? dateFilter : undefined,
+    sortBy: sortBy || undefined
   });
+  const createOrder = useCreateOrder();
+  const updateOrder = useUpdateOrder();
+  const deleteOrder = useDeleteOrder();
+  
+  // Flatten all pages into single array
+  const orders = data?.pages?.flatMap(page => page.orders) || [];
 
   // Format date helper to avoid hydration issues
   const formatDate = (dateString) => {
@@ -116,14 +134,6 @@ export default function OrdersPage() {
   useEffect(() => {
     setIsMounted(true);
   }, []);
-
-  // Filters
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [paymentFilter, setPaymentFilter] = useState("all");
-  const [dateFilter, setDateFilter] = useState("all");
-  const [sortBy, setSortBy] = useState("date");
-  const [customerSearchQuery, setCustomerSearchQuery] = useState("");
 
   const [formData, setFormData] = useState({
     orderType: "customer", // 'customer' or 'guest'
@@ -153,111 +163,10 @@ export default function OrdersPage() {
     terms: "",
   });
 
-  // Memoized fetch functions to prevent infinite loops
-  const fetchOrders = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const page = 1; // Always start from page 1 with infinite scroll
-      
-      let url = "/api/orders?";
-      if (statusFilter !== "all") url += `status=${statusFilter}&`;
-      if (paymentFilter !== "all") url += `paymentStatus=${paymentFilter}&`;
-      if (dateFilter !== "all") url += `date=${dateFilter}&`;
-      if (customerIdFromUrl) url += `customer=${customerIdFromUrl}&`;
-      if (searchQuery) url += `search=${encodeURIComponent(searchQuery)}&`;
-      if (sortBy) url += `sortBy=${sortBy}&`;
-      url += `page=${page}&limit=20`;
-
-      const response = await fetch(url);
-      if (response.ok) {
-        const data = await response.json();
-        const ordersData = data.orders || [];
-        
-        // Set pagination info
-        if (data.pagination) {
-          setPagination(data.pagination);
-          setHasMoreOrders(data.pagination.hasMore);
-        }
-        
-        // Reset data (for filters/search)
-        setOrders(ordersData);
-        setAllLoadedOrders(ordersData);
-      } else {
-        toast.error("Failed to fetch orders");
-      }
-    } catch (error) {
-      toast.error("Failed to fetch orders");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [statusFilter, paymentFilter, dateFilter, customerIdFromUrl, searchQuery, sortBy]);
-
-  // Client-side search in loaded orders
-  const searchLoadedOrders = useCallback((query) => {
-    if (!query || query.trim() === "") return allLoadedOrders;
-    
-    const lowerQuery = query.toLowerCase().trim();
-    return allLoadedOrders.filter(order => 
-      order.orderNumber?.toLowerCase().includes(lowerQuery) ||
-      order.customer?.name?.toLowerCase().includes(lowerQuery) ||
-      order.customer?.phone?.includes(lowerQuery) ||
-      order.guestInfo?.name?.toLowerCase().includes(lowerQuery) ||
-      order.guestInfo?.phone?.includes(lowerQuery)
-    );
-  }, [allLoadedOrders]);
-
-  // Hybrid search: client-side first, then database
-  const performHybridSearch = useCallback(async (query) => {
-    if (!query || query.trim() === "") {
-      // No search query - show all loaded orders with filters
-      setOrders(allLoadedOrders);
-      return;
-    }
-
-    // Step 1: Search in already loaded orders (instant)
-    const localResults = searchLoadedOrders(query);
-    
-    if (localResults.length > 0) {
-      // Found results in cache - show immediately
-      setOrders(localResults);
-      return;
-    }
-    
-    // Step 2: No local results - search database
-    setIsSearchingDB(true);
-    try {
-      let url = `/api/orders?search=${encodeURIComponent(query)}&limit=20`;
-      if (statusFilter !== "all") url += `&status=${statusFilter}`;
-      if (paymentFilter !== "all") url += `&paymentStatus=${paymentFilter}`;
-      
-      const response = await fetch(url);
-      if (response.ok) {
-        const data = await response.json();
-        const dbResults = data.orders || [];
-        
-        // Update cache with new results
-        setAllLoadedOrders(prev => {
-          const existingIds = new Set(prev.map(o => o._id));
-          const newOrders = dbResults.filter(o => !existingIds.has(o._id));
-          return [...prev, ...newOrders];
-        });
-        
-        setOrders(dbResults);
-        
-        if (dbResults.length === 0) {
-          toast.info("No orders found matching your search");
-        }
-      }
-    } catch (error) {
-      toast.error("Search failed");
-    } finally {
-      setIsSearchingDB(false);
-    }
-  }, [allLoadedOrders, searchLoadedOrders, statusFilter, paymentFilter]);
-
+  // Fetch customers
   const fetchCustomers = useCallback(async (searchTerm = "") => {
     try {
-      let url = "/api/customers?limit=100"; // Load more customers for dropdown
+      let url = "/api/customers?limit=100";
       if (searchTerm) {
         url += `&search=${encodeURIComponent(searchTerm)}`;
       }
@@ -267,7 +176,6 @@ export default function OrdersPage() {
         const data = await response.json();
         setCustomers(data.customers || []);
         
-        // If there's a customer filter, find and set the customer name
         if (customerIdFromUrl) {
           const customer = (data.customers || []).find(c => c._id === customerIdFromUrl);
           if (customer) {
@@ -276,22 +184,20 @@ export default function OrdersPage() {
         }
       }
     } catch (error) {
-      // Error already logged
+      // Silent error
     }
   }, [customerIdFromUrl]);
 
   const fetchProducts = useCallback(async () => {
     try {
-      // Only fetch active products with stock > 0 for better performance
       const response = await fetch("/api/products?active=true");
       if (response.ok) {
         const data = await response.json();
-        // Filter products with stock > 0 on client side as additional safety
         const activeProducts = (data.products || []).filter(p => p.stock > 0);
         setProducts(activeProducts);
       }
     } catch (error) {
-      // Error already logged
+      // Silent error
     }
   }, []);
 
@@ -309,93 +215,23 @@ export default function OrdersPage() {
     }
   }, [selectedOrder, isInvoiceDialogOpen]);
 
-  // Auto-load orders on mount (no manual load button needed)
-  useEffect(() => {
-    if (!ordersLoaded) {
-      setOrdersLoaded(true);
-    }
-  }, [ordersLoaded]);
-
   // Infinite scroll implementation
   useEffect(() => {
     const handleScroll = () => {
-      // Check if user is near bottom of page (within 200px)
       const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
       const windowHeight = window.innerHeight;
       const documentHeight = document.documentElement.scrollHeight;
       
       const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
       
-      if (isNearBottom && !isLoading && !isLoadingMore && hasMoreOrders && ordersLoaded && !searchQuery) {
-        loadMoreOrders();
+      if (isNearBottom && !isLoading && !isFetchingNextPage && hasNextPage && !searchQuery) {
+        fetchNextPage();
       }
     };
 
-    // Throttle scroll events
-    let scrollTimeout;
-    const throttledScroll = () => {
-      clearTimeout(scrollTimeout);
-      scrollTimeout = setTimeout(handleScroll, 100);
-    };
-
-    window.addEventListener('scroll', throttledScroll);
-    return () => {
-      window.removeEventListener('scroll', throttledScroll);
-      clearTimeout(scrollTimeout);
-    };
-  }, [isLoading, isLoadingMore, hasMoreOrders, ordersLoaded, searchQuery]);
-
-  // Load more orders function
-  const loadMoreOrders = async () => {
-    if (isLoadingMore || !hasMoreOrders) return;
-    
-    setIsLoadingMore(true);
-    try {
-      const nextPage = Math.floor(allLoadedOrders.length / 20) + 1;
-      let url = "/api/orders?";
-      if (statusFilter !== "all") url += `status=${statusFilter}&`;
-      if (paymentFilter !== "all") url += `paymentStatus=${paymentFilter}&`;
-      if (dateFilter !== "all") url += `date=${dateFilter}&`;
-      if (customerIdFromUrl) url += `customer=${customerIdFromUrl}&`;
-      if (sortBy) url += `sortBy=${sortBy}&`;
-      url += `page=${nextPage}&limit=20`;
-
-      const response = await fetch(url);
-      if (response.ok) {
-        const data = await response.json();
-        const newOrders = data.orders || [];
-        
-        if (newOrders.length === 0) {
-          setHasMoreOrders(false);
-        } else {
-          // Append new orders to existing ones
-          setAllLoadedOrders(prev => [...prev, ...newOrders]);
-          setOrders(prev => [...prev, ...newOrders]);
-          
-          // Update pagination info
-          if (data.pagination) {
-            setPagination(data.pagination);
-            setHasMoreOrders(data.pagination.hasMore);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load more orders:', error);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  };
-
-  // Fetch orders when dependencies change - with debouncing for filters
-  useEffect(() => {
-    if (!ordersLoaded) return;
-    
-    const timer = setTimeout(() => {
-      fetchOrders(); // Reset data when filters change
-    }, 500); // 500ms debounce for filters
-
-    return () => clearTimeout(timer);
-  }, [statusFilter, paymentFilter, dateFilter, sortBy, ordersLoaded, fetchOrders]);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [isLoading, isFetchingNextPage, hasNextPage, searchQuery, fetchNextPage]);
 
   // Lazy load customers and products only when dialog opens
   useEffect(() => {
@@ -407,7 +243,7 @@ export default function OrdersPage() {
         fetchProducts();
       }
     }
-  }, [isDialogOpen]);
+  }, [isDialogOpen, customers.length, products.length, fetchCustomers, fetchProducts]);
 
   // Load products when view order dialog opens (needed for edit mode)
   useEffect(() => {
@@ -416,38 +252,22 @@ export default function OrdersPage() {
         fetchProducts();
       }
     }
-  }, [isViewOrderDialogOpen, fetchProducts]);
+  }, [isViewOrderDialogOpen, products.length, fetchProducts]);
 
   // Debounce customer search
   useEffect(() => {
-    if (!isDialogOpen) return; // Only search when dialog is open
+    if (!isDialogOpen) return;
     
     const timer = setTimeout(() => {
       if (customerSearchQuery) {
         fetchCustomers(customerSearchQuery);
       } else {
-        fetchCustomers(); // Load all when search is empty
+        fetchCustomers();
       }
-    }, 300); // 300ms delay
+    }, 300);
 
     return () => clearTimeout(timer);
-  }, [customerSearchQuery, isDialogOpen]);
-
-  // Debounce main search query
-  useEffect(() => {
-    if (!ordersLoaded) return; // Only search if orders are loaded
-    
-    const timer = setTimeout(() => {
-      if (searchQuery && searchQuery.trim()) {
-        performHybridSearch(searchQuery);
-      } else {
-        // If search is cleared, show all loaded orders with current filters
-        setOrders(allLoadedOrders);
-      }
-    }, 300); // 300ms delay
-
-    return () => clearTimeout(timer);
-  }, [searchQuery, ordersLoaded, performHybridSearch, allLoadedOrders]);
+  }, [customerSearchQuery, isDialogOpen, fetchCustomers]);
 
   // Close customer dropdown when clicking outside
   useEffect(() => {
@@ -470,42 +290,22 @@ export default function OrdersPage() {
   }, []);
 
   const handleSearch = () => {
-    if (!ordersLoaded) {
-      setOrdersLoaded(true);
-      return;
-    }
-    
-    // Reset infinite scroll state for search
-    setHasMoreOrders(true);
-    
-    // Trigger search immediately
-    if (searchQuery && searchQuery.trim()) {
-      performHybridSearch(searchQuery);
-    } else {
-      fetchOrders(); // Reset to show all orders
-    }
+    // Search is handled automatically by React Query when searchQuery changes
   };
 
   const handleRefresh = () => {
-    // If we're on a customer-specific page, redirect to all orders
     if (customerIdFromUrl) {
       window.location.href = "/dashboard/orders";
       return;
     }
     
-    // Reset all filters and infinite scroll state
     setSearchQuery("");
     setStatusFilter("all");
     setPaymentFilter("all");
     setDateFilter("all");
     setSortBy("date");
-    setHasMoreOrders(true);
     
-    // Reload data
-    if (ordersLoaded) {
-      fetchOrders();
-    }
-    toast.success("Filters reset and data refreshed");
+    toast.success("Filters reset");
   };
 
   const handleEditOrder = () => {
@@ -549,33 +349,23 @@ export default function OrdersPage() {
     try {
       setIsSubmitting(true);
 
-      // Validate items
       const validItems = editOrderData.items.filter(item => item.product && item.quantity > 0);
       if (validItems.length === 0) {
         toast.error("Please add at least one item");
         return;
       }
 
-      const response = await fetch(`/api/orders/${selectedOrder._id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await updateOrder.mutateAsync({
+        orderId: selectedOrder._id,
+        updates: {
           items: validItems,
           notes: editOrderData.notes,
           deliveryDate: editOrderData.deliveryDate || null,
-        }),
+        },
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to update order");
-      }
-
-      toast.success("Order updated successfully!");
       setIsEditMode(false);
       setIsViewOrderDialogOpen(false);
-      fetchOrders();
     } catch (error) {
       toast.error(getUserFriendlyError(error));
     } finally {
@@ -683,22 +473,9 @@ export default function OrdersPage() {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch("/api/orders", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to create order");
-      }
-
-      toast.success("Order created successfully!");
+      await createOrder.mutateAsync(formData);
       resetForm();
       setIsDialogOpen(false);
-      fetchOrders();
     } catch (error) {
       toast.error(getUserFriendlyError(error));
     } finally {
@@ -708,18 +485,10 @@ export default function OrdersPage() {
 
   const handleStatusChange = async (orderId, newStatus) => {
     try {
-      const response = await fetch(`/api/orders/${orderId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus }),
+      await updateOrder.mutateAsync({
+        orderId,
+        updates: { status: newStatus },
       });
-
-      if (!response.ok) {
-        throw new Error("Failed to update status");
-      }
-
-      toast.success("Order status updated!");
-      fetchOrders();
     } catch (error) {
       toast.error(getUserFriendlyError(error));
     }
@@ -734,20 +503,9 @@ export default function OrdersPage() {
     if (!orderToDelete) return;
 
     try {
-      const response = await fetch(`/api/orders/${orderToDelete._id}`, {
-        method: "DELETE",
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to delete order");
-      }
-
-      toast.success("Order deleted successfully!");
+      await deleteOrder.mutateAsync(orderToDelete._id);
       setIsDeleteDialogOpen(false);
       setOrderToDelete(null);
-      fetchOrders();
     } catch (error) {
       toast.error(getUserFriendlyError(error));
       setIsDeleteDialogOpen(false);
@@ -781,32 +539,13 @@ export default function OrdersPage() {
 
   const handleUnpaidConfirm = async () => {
     try {
-      const response = await fetch(`/api/orders/${selectedOrder._id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentStatus: "unpaid", paidAmount: 0 }),
+      await updateOrder.mutateAsync({
+        orderId: selectedOrder._id,
+        updates: { paymentStatus: "unpaid", paidAmount: 0 },
       });
-
-      if (!response.ok) {
-        throw new Error("Failed to update payment status");
-      }
-
-      toast.success("Payment status reset to unpaid!");
-      
-      // Update the local orders state immediately for instant UI feedback
-      setOrders(prevOrders => 
-        prevOrders.map(order => 
-          order._id === selectedOrder._id 
-            ? { ...order, paymentStatus: "unpaid", paidAmount: 0 }
-            : order
-        )
-      );
       
       setIsUnpaidDialogOpen(false);
       setSelectedOrder(null);
-      
-      // Refresh orders from server to ensure consistency
-      await fetchOrders();
     } catch (error) {
       toast.error(getUserFriendlyError(error));
     }
@@ -821,7 +560,6 @@ export default function OrdersPage() {
     const newTotalPaid = currentPaid + amount;
     const dueAmount = totalAmount - currentPaid;
 
-    // Validation
     if (amount <= 0) {
       toast.error("Payment amount must be greater than 0");
       return;
@@ -832,7 +570,6 @@ export default function OrdersPage() {
       return;
     }
 
-    // Determine correct payment status
     let paymentStatus;
     if (newTotalPaid >= totalAmount) {
       paymentStatus = "paid";
@@ -842,41 +579,18 @@ export default function OrdersPage() {
       paymentStatus = "unpaid";
     }
 
-    const updateData = {
-      paymentStatus,
-      paidAmount: newTotalPaid
-    };
-
     try {
-      const response = await fetch(`/api/orders/${selectedOrder._id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updateData),
+      await updateOrder.mutateAsync({
+        orderId: selectedOrder._id,
+        updates: {
+          paymentStatus,
+          paidAmount: newTotalPaid
+        },
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to update payment");
-      }
-
-      toast.success(`Payment of ₹${amount.toFixed(2)} recorded! Status: ${paymentStatus}`);
-      
-      // Update the local orders state immediately for instant UI feedback
-      setOrders(prevOrders => 
-        prevOrders.map(order => 
-          order._id === selectedOrder._id 
-            ? { ...order, paymentStatus, paidAmount: newTotalPaid }
-            : order
-        )
-      );
       
       setIsPaymentDialogOpen(false);
       setPaymentAmount("");
       setSelectedOrder(null);
-      
-      // Refresh orders from server to ensure consistency
-      await fetchOrders();
     } catch (error) {
       toast.error(getUserFriendlyError(error));
     }
@@ -899,6 +613,9 @@ export default function OrdersPage() {
         throw new Error(data.error || "Failed to create invoice");
       }
 
+      // Invalidate orders cache to refresh the UI with invoice data
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+
       toast.success("Invoice created successfully!", {
         action: {
           label: "View Invoice",
@@ -918,9 +635,6 @@ export default function OrdersPage() {
         notes: "",
         terms: "",
       });
-      
-      // Refresh orders to show the new invoice
-      await fetchOrders();
     } catch (error) {
       toast.error(getUserFriendlyError(error));
     } finally {
@@ -1542,7 +1256,7 @@ export default function OrdersPage() {
             {orders.length > 0 ? (
               <>
                 Showing {orders.length} order(s)
-                {hasMoreOrders && !searchQuery && (
+                {hasNextPage && !searchQuery && (
                   <span className="text-muted-foreground"> • Scroll down to load more</span>
                 )}
               </>
@@ -1557,12 +1271,10 @@ export default function OrdersPage() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
               <p className="text-sm text-muted-foreground">Loading orders...</p>
             </div>
-          ) : isSearchingDB ? (
-            <div className="flex flex-col items-center justify-center py-8 gap-3">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-              <p className="text-sm text-muted-foreground">
-                Searching database for "{searchQuery}"...
-              </p>
+          ) : error ? (
+            <div className="text-center py-8">
+              <p className="text-red-600">Failed to load orders</p>
+              <p className="text-sm text-muted-foreground mt-2">{error.message}</p>
             </div>
           ) : orders.length === 0 ? (
             <div className="text-center py-8">
@@ -1732,7 +1444,6 @@ export default function OrdersPage() {
                           onValueChange={(value) =>
                             handlePaymentStatusChange(order, value)
                           }
-                          disabled={!!order.invoice}
                         >
                           <SelectTrigger className="text-xs h-8 w-auto min-w-22.5">
                             <SelectValue />
@@ -1816,7 +1527,7 @@ export default function OrdersPage() {
               </div>
               
               {/* Infinite Scroll Loading Indicator */}
-              {isLoadingMore && (
+              {isFetchingNextPage && (
                 <div className="flex flex-col items-center justify-center py-6 gap-2">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
                   <p className="text-sm text-muted-foreground">Loading more orders...</p>
@@ -1824,7 +1535,7 @@ export default function OrdersPage() {
               )}
               
               {/* End of Results Indicator */}
-              {!hasMoreOrders && orders.length > 0 && !searchQuery && (
+              {!hasNextPage && orders.length > 0 && !searchQuery && (
                 <div className="text-center py-6">
                   <p className="text-sm text-muted-foreground">
                     You've reached the end of all orders
@@ -2541,6 +2252,9 @@ export default function OrdersPage() {
                     throw new Error(data.error || "Failed to record payment");
                   }
 
+                  // Invalidate orders cache to refresh invoice payment status
+                  queryClient.invalidateQueries({ queryKey: ['orders'] });
+
                   toast.success(data.message || "Payment recorded successfully!");
                   setIsRecordPaymentDialogOpen(false);
                   setPaymentAmount("");
@@ -2548,9 +2262,6 @@ export default function OrdersPage() {
                   setPaymentNotes("");
                   setSelectedInvoice(null);
                   setSelectedOrder(null);
-                  
-                  // Refresh orders to show updated invoice status
-                  await fetchOrders();
                 } catch (error) {
                   toast.error(getUserFriendlyError(error));
                 } finally {
@@ -2662,6 +2373,9 @@ export default function OrdersPage() {
                               throw new Error(data.error || "Failed to reset payments");
                             }
 
+                            // Invalidate orders cache to refresh invoice payment status
+                            queryClient.invalidateQueries({ queryKey: ['orders'] });
+
                             toast.success("All payments reset successfully!");
                             setIsRecordPaymentDialogOpen(false);
                             setPaymentAmount("");
@@ -2669,8 +2383,6 @@ export default function OrdersPage() {
                             setPaymentNotes("");
                             setSelectedInvoice(null);
                             setSelectedOrder(null);
-                            
-                            await fetchOrders();
                           } catch (error) {
                             toast.error(getUserFriendlyError(error));
                           } finally {

@@ -67,7 +67,7 @@ export async function GET(request) {
         // Build search filter
         if (customerIds.length > 0) {
           filter.$or = [
-            { orderNumber: { $regex: search.trim(), $options: 'i' } },
+            { orderNumber: { $regex: `^${search.trim()}`, $options: 'i' } },
             { customer: { $in: customerIds } },
             { 'guestInfo.name': { $regex: search.trim(), $options: 'i' } },
             { 'guestInfo.phone': { $regex: search.trim(), $options: 'i' } }
@@ -75,7 +75,7 @@ export async function GET(request) {
         } else {
           // No customers found, search only order number and guest info
           filter.$or = [
-            { orderNumber: { $regex: search.trim(), $options: 'i' } },
+            { orderNumber: { $regex: `^${search.trim()}`, $options: 'i' } },
             { 'guestInfo.name': { $regex: search.trim(), $options: 'i' } },
             { 'guestInfo.phone': { $regex: search.trim(), $options: 'i' } }
           ];
@@ -83,7 +83,7 @@ export async function GET(request) {
       } catch (searchError) {
         console.error('Customer search error:', searchError);
         // Fallback to simple order number search if customer search fails
-        filter.orderNumber = { $regex: search.trim(), $options: 'i' };
+        filter.orderNumber = { $regex: `^${search.trim()}`, $options: 'i' };
       }
     }
 
@@ -119,9 +119,9 @@ export async function GET(request) {
     console.error('Orders API Error:', error);
     
     return NextResponse.json(
-      { 
+      {
         error: 'Failed to fetch orders',
-        message: error.message,
+        ...(process.env.NODE_ENV !== 'production' && { message: error.message }),
       },
       { status: 500 }
     );
@@ -197,54 +197,40 @@ export async function POST(request) {
       }
     }
 
-    // Validate products and calculate totals
+    // Phase 1: Read-only product validation — no writes yet
     let subtotalAtOriginalPrice = 0;
     let subtotalAtCustomPrice = 0;
     const validatedItems = [];
+    const productInfoMap = {}; // keyed by string(id) for rollback error messages
 
     for (const item of items) {
-      const product = await Product.findById(item.product);
+      const product = await Product.findById(item.product).select('name price').lean();
       if (!product) {
         return NextResponse.json(
           { error: `Product not found: ${item.product}` },
           { status: 404 }
         );
       }
+      productInfoMap[String(item.product)] = product;
 
-      // Check stock availability
-      if (product.stock < item.quantity) {
-        return NextResponse.json(
-          { error: `Insufficient stock for ${product.name}. Available: ${product.stock}` },
-          { status: 400 }
-        );
-      }
-
-      // Calculate at original price
       const originalPrice = parseFloat(product.price);
-      const originalSubtotal = item.quantity * originalPrice;
-      subtotalAtOriginalPrice += originalSubtotal;
-
-      // Use custom price if provided, otherwise use product price
       const itemPrice = item.customPrice ? parseFloat(item.customPrice) : originalPrice;
       const customSubtotal = item.quantity * itemPrice;
-      subtotalAtCustomPrice += customSubtotal;
+      subtotalAtOriginalPrice += item.quantity * originalPrice;
+      subtotalAtCustomPrice  += customSubtotal;
 
-      // Calculate discount percentage
-      const discountPercentage = originalPrice > itemPrice ? 
-        Math.round(((originalPrice - itemPrice) / originalPrice) * 100) : 0;
+      const discountPercentage = originalPrice > itemPrice
+        ? Math.round(((originalPrice - itemPrice) / originalPrice) * 100)
+        : 0;
 
       validatedItems.push({
-        product: product._id,
-        quantity: item.quantity,
-        price: itemPrice, // Store the actual selling price (custom or original)
-        originalPrice: originalPrice, // Store original price for invoice display
-        discountPercentage: discountPercentage, // Store discount percentage
-        subtotal: customSubtotal,
+        product:            product._id,
+        quantity:           item.quantity,
+        price:              itemPrice,
+        originalPrice,
+        discountPercentage,
+        subtotal:           customSubtotal,
       });
-
-      // Reduce stock
-      product.stock -= item.quantity;
-      await product.save();
     }
 
     // Calculate discount as difference between original and custom pricing
@@ -291,7 +277,56 @@ export async function POST(request) {
       orderData.deliveryAddress = deliveryAddress || customerDoc.address;
     }
 
-    const order = await Order.create(orderData);
+    // Phase 2: Atomically deduct stock for every item, then create the order.
+    // Using findOneAndUpdate with a $gte condition eliminates the read-check-write
+    // race condition: only one concurrent request can win the stock slot.
+    const deducted = []; // track successful deductions for rollback if Order.create fails
+
+    for (const vi of validatedItems) {
+      const updated = await Product.findOneAndUpdate(
+        { _id: vi.product, stock: { $gte: vi.quantity } },
+        { $inc: { stock: -vi.quantity } },
+        { returnDocument: 'after' }
+      );
+
+      if (!updated) {
+        // Rollback all deductions that already succeeded
+        if (deducted.length > 0) {
+          await Product.bulkWrite(
+            deducted.map(d => ({
+              updateOne: {
+                filter: { _id: d.productId },
+                update: { $inc: { stock: d.quantity } },
+              },
+            }))
+          ).catch(rbErr => logger.error('Stock rollback failed', rbErr));
+        }
+        const info    = productInfoMap[String(vi.product)];
+        const current = await Product.findById(vi.product).select('stock').lean();
+        return NextResponse.json(
+          { error: `Insufficient stock for ${info?.name || 'product'}. Available: ${current?.stock ?? 0}` },
+          { status: 400 }
+        );
+      }
+
+      deducted.push({ productId: vi.product, quantity: vi.quantity });
+    }
+
+    // Create the order; if this fails, restore all deducted stock
+    let order;
+    try {
+      order = await Order.create(orderData);
+    } catch (createError) {
+      await Product.bulkWrite(
+        deducted.map(d => ({
+          updateOne: {
+            filter: { _id: d.productId },
+            update: { $inc: { stock: d.quantity } },
+          },
+        }))
+      ).catch(rbErr => logger.error('Stock rollback failed', rbErr));
+      throw createError;
+    }
 
     const populatedOrder = await Order.findById(order._id)
       .populate('customer', 'name phone email address')
@@ -299,20 +334,15 @@ export async function POST(request) {
       .populate('createdBy', 'name email');
 
     return NextResponse.json(
-      {
-        success: true,
-        order: populatedOrder,
-      },
+      { success: true, order: populatedOrder },
       { status: 201 }
     );
   } catch (error) {
     logger.error('Create order error', error);
-    
-    // Return more specific error message
     return NextResponse.json(
-      { 
-        error: error.message || 'Failed to create order',
-        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      {
+        error: process.env.NODE_ENV !== 'production' ? error.message : 'Failed to create order',
+        details: process.env.NODE_ENV !== 'production' ? error.stack : undefined,
       },
       { status: 500 }
     );

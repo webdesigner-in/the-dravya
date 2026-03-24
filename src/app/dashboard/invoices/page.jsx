@@ -39,24 +39,38 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, FileText, Download, Eye, ShoppingCart, Pencil, Trash2 } from "lucide-react";
+import { FileText, Download, Eye, ShoppingCart, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
+import { useInvoices, useUpdateInvoice, useDeleteInvoice } from "@/hooks/useInvoices";
 
 export default function InvoicesPage() {
   const router = useRouter();
   const isAdmin = useAuthStore((state) => state.isAdmin());
-  const [invoices, setInvoices] = useState([]);
-  const [allLoadedInvoices, setAllLoadedInvoices] = useState([]); // Cache all loaded invoices
-  const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false); // New: Loading more invoices
-  const [hasMoreInvoices, setHasMoreInvoices] = useState(true); // New: Track if more invoices available
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  
+  // React Query hooks with infinite scroll
+  const { 
+    data, 
+    isLoading, 
+    error,
+    fetchNextPage, 
+    hasNextPage, 
+    isFetchingNextPage 
+  } = useInvoices({ 
+    status: statusFilter !== "all" ? statusFilter : undefined,
+    search: searchQuery || undefined
+  });
+  const updateInvoice = useUpdateInvoice();
+  const deleteInvoice = useDeleteInvoice();
+  
+  // Flatten all pages into single array
+  const invoices = data?.pages?.flatMap(page => page.invoices) || [];
+  
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [editFormData, setEditFormData] = useState({
     status: "",
@@ -66,21 +80,8 @@ export default function InvoicesPage() {
     notes: "",
     terms: "",
   });
-  
-  // Pagination state (kept for API compatibility)
-  const [pagination, setPagination] = useState({
-    currentPage: 1,
-    totalPages: 1,
-    totalItems: 0,
-    itemsPerPage: 20,
-    hasMore: false,
-  });
 
-  useEffect(() => {
-    fetchInvoices();
-  }, [statusFilter, searchQuery]); // Removed currentPage dependency
-
-  // Infinite scroll implementation for invoices
+  // Infinite scroll implementation
   useEffect(() => {
     const handleScroll = () => {
       const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
@@ -89,91 +90,14 @@ export default function InvoicesPage() {
       
       const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
       
-      if (isNearBottom && !isLoading && !isLoadingMore && hasMoreInvoices && !searchQuery) {
-        loadMoreInvoices();
+      if (isNearBottom && !isLoading && !isFetchingNextPage && hasNextPage && !searchQuery) {
+        fetchNextPage();
       }
     };
 
-    let scrollTimeout;
-    const throttledScroll = () => {
-      clearTimeout(scrollTimeout);
-      scrollTimeout = setTimeout(handleScroll, 100);
-    };
-
-    window.addEventListener('scroll', throttledScroll);
-    return () => {
-      window.removeEventListener('scroll', throttledScroll);
-      clearTimeout(scrollTimeout);
-    };
-  }, [isLoading, isLoadingMore, hasMoreInvoices, searchQuery]);
-
-  // Load more invoices function
-  const loadMoreInvoices = async () => {
-    if (isLoadingMore || !hasMoreInvoices) return;
-    
-    setIsLoadingMore(true);
-    try {
-      const nextPage = Math.floor(allLoadedInvoices.length / 20) + 1;
-      let url = "/api/invoices?";
-      if (statusFilter !== "all") url += `status=${statusFilter}&`;
-      url += `page=${nextPage}&limit=20`;
-
-      const response = await fetch(url);
-      if (response.ok) {
-        const data = await response.json();
-        const newInvoices = data.invoices || [];
-        
-        if (newInvoices.length === 0) {
-          setHasMoreInvoices(false);
-        } else {
-          setAllLoadedInvoices(prev => [...prev, ...newInvoices]);
-          setInvoices(prev => [...prev, ...newInvoices]);
-          
-          if (data.pagination) {
-            setPagination(data.pagination);
-            setHasMoreInvoices(data.pagination.hasMore);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load more invoices:', error);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  };
-
-  const fetchInvoices = async () => {
-    try {
-      setIsLoading(true);
-      let url = "/api/invoices?";
-      if (statusFilter !== "all") url += `status=${statusFilter}&`;
-      if (searchQuery) url += `search=${searchQuery}&`;
-      url += `page=1&limit=20`;
-
-      const response = await fetch(url);
-      if (response.ok) {
-        const data = await response.json();
-        const invoicesData = data.invoices || [];
-        
-        setInvoices(invoicesData);
-        setAllLoadedInvoices(invoicesData);
-        
-        if (data.pagination) {
-          setPagination(data.pagination);
-          setHasMoreInvoices(data.pagination.hasMore);
-        }
-      }
-    } catch (error) {
-      toast.error("Failed to fetch invoices");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSearch = (value) => {
-    setSearchQuery(value);
-    setHasMoreInvoices(true); // Reset infinite scroll state
-  };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [isLoading, isFetchingNextPage, hasNextPage, searchQuery, fetchNextPage]);
 
   const getStatusColor = (status) => {
     const colors = {
@@ -202,29 +126,17 @@ export default function InvoicesPage() {
 
   const handleEditSubmit = async (e) => {
     e.preventDefault();
-    setIsSubmitting(true);
 
     try {
-      const response = await fetch(`/api/invoices/${selectedInvoice._id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editFormData),
+      await updateInvoice.mutateAsync({
+        invoiceId: selectedInvoice._id,
+        updates: editFormData,
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to update invoice");
-      }
-
-      toast.success("Invoice updated successfully!");
       setIsEditDialogOpen(false);
       setSelectedInvoice(null);
-      fetchInvoices();
     } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setIsSubmitting(false);
+      // Error toast shown automatically
     }
   };
 
@@ -237,22 +149,11 @@ export default function InvoicesPage() {
     if (!selectedInvoice) return;
 
     try {
-      const response = await fetch(`/api/invoices/${selectedInvoice._id}`, {
-        method: "DELETE",
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to delete invoice");
-      }
-
-      toast.success("Invoice deleted successfully!");
+      await deleteInvoice.mutateAsync(selectedInvoice._id);
       setIsDeleteDialogOpen(false);
       setSelectedInvoice(null);
-      fetchInvoices();
     } catch (error) {
-      toast.error(error.message);
+      // Error toast shown automatically
       setIsDeleteDialogOpen(false);
       setSelectedInvoice(null);
     }
@@ -277,7 +178,7 @@ export default function InvoicesPage() {
               <Input
                 placeholder="Search by invoice number, order number, or customer name..."
                 value={searchQuery}
-                onChange={(e) => handleSearch(e.target.value)}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="text-sm"
               />
             </div>
@@ -304,22 +205,18 @@ export default function InvoicesPage() {
         <CardHeader>
           <CardTitle className="text-lg md:text-xl">All Invoices</CardTitle>
           <CardDescription className="text-sm">
-            {invoices.length > 0 ? (
-              <>
-                Showing {invoices.length} invoice(s)
-                {hasMoreInvoices && !searchQuery && (
-                  <span className="text-muted-foreground"> • Scroll down to load more</span>
-                )}
-              </>
-            ) : (
-              "Your invoices will appear here"
-            )}
+            {invoices.length > 0 ? `Showing ${invoices.length} invoice(s)` : "Your invoices will appear here"}
           </CardDescription>
         </CardHeader>
         <CardContent className="p-2 sm:p-6">
-          {isLoading && invoices.length === 0 ? (
+          {isLoading ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+            </div>
+          ) : error ? (
+            <div className="text-center py-8">
+              <p className="text-red-600">Failed to load invoices</p>
+              <p className="text-sm text-muted-foreground mt-2">{error.message}</p>
             </div>
           ) : invoices.length === 0 ? (
             <div className="text-center py-8">
@@ -330,147 +227,143 @@ export default function InvoicesPage() {
               </p>
             </div>
           ) : (
-            <>
-              <div className="space-y-3 md:space-y-4">
-                {invoices.map((invoice) => (
-                <Card key={invoice._id} className="hover:shadow-md transition-shadow overflow-hidden">
-                  <CardContent className="p-3 md:p-4">
-                    <div className="flex flex-col gap-4">
-                      {/* Invoice Header */}
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-base md:text-lg font-semibold">
-                          {invoice.invoiceNumber}
-                        </h3>
-                        <span
-                          className={`text-xs px-2 py-1 rounded capitalize ${getStatusColor(
-                            invoice.status
-                          )}`}
-                        >
-                          {invoice.status}
-                        </span>
-                      </div>
+            <div className="space-y-3 md:space-y-4">
+              {invoices.map((invoice) => (
+              <Card key={invoice._id} className="hover:shadow-md transition-shadow overflow-hidden">
+                <CardContent className="p-3 md:p-4">
+                  <div className="flex flex-col gap-4">
+                    {/* Invoice Header */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-base md:text-lg font-semibold">
+                        {invoice.invoiceNumber}
+                      </h3>
+                      <span
+                        className={`text-xs px-2 py-1 rounded capitalize ${getStatusColor(
+                          invoice.status
+                        )}`}
+                      >
+                        {invoice.status}
+                      </span>
+                    </div>
 
-                      {/* Invoice Details */}
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-xs sm:text-sm">
-                        <div>
-                          <span className="text-muted-foreground block">Customer:</span>
-                          {invoice.customer ? (
-                            <p className="font-medium truncate">{invoice.customer.name}</p>
-                          ) : invoice.guestInfo ? (
-                            <p className="font-medium truncate">{invoice.guestInfo.name} <span className="text-xs text-muted-foreground">(Guest)</span></p>
-                          ) : (
-                            <p className="font-medium truncate text-muted-foreground">N/A</p>
-                          )}
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block">Order:</span>
-                          <p className="font-medium">{invoice.order?.orderNumber}</p>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block">Total:</span>
-                          <p className="font-medium">₹{parseFloat(invoice.totalAmount).toFixed(2)}</p>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block">Balance:</span>
-                          <p className={`font-medium ${invoice.balanceAmount > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                            ₹{parseFloat(invoice.balanceAmount).toFixed(2)}
-                          </p>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block">Due Date:</span>
-                          <p className="font-medium">
-                            {invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : "N/A"}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="text-xs sm:text-sm text-muted-foreground">
-                        <span>Issue Date: {new Date(invoice.issueDate).toLocaleDateString()}</span>
-                        {invoice.paymentTerms && (
-                          <span className="ml-4">Terms: {invoice.paymentTerms}</span>
+                    {/* Invoice Details */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-xs sm:text-sm">
+                      <div>
+                        <span className="text-muted-foreground block">Customer:</span>
+                        {invoice.customer ? (
+                          <p className="font-medium truncate">{invoice.customer.name}</p>
+                        ) : invoice.guestInfo ? (
+                          <p className="font-medium truncate">{invoice.guestInfo.name} <span className="text-xs text-muted-foreground">(Guest)</span></p>
+                        ) : (
+                          <p className="font-medium truncate text-muted-foreground">N/A</p>
                         )}
                       </div>
+                      <div>
+                        <span className="text-muted-foreground block">Order:</span>
+                        <p className="font-medium">{invoice.order?.orderNumber}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block">Total:</span>
+                        <p className="font-medium">₹{parseFloat(invoice.totalAmount).toFixed(2)}</p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block">Balance:</span>
+                        <p className={`font-medium ${invoice.balanceAmount > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                          ₹{parseFloat(invoice.balanceAmount).toFixed(2)}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block">Due Date:</span>
+                        <p className="font-medium">
+                          {invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : "N/A"}
+                        </p>
+                      </div>
+                    </div>
 
-                      {/* Action Buttons - Compact Layout */}
-                      <div className="flex flex-wrap gap-2 pt-2 border-t">
-                        <Button 
-                          size="sm" 
-                          variant="default"
-                          onClick={() => router.push(`/dashboard/invoices/${invoice._id}`)}
-                          className="text-xs h-8"
-                        >
-                          <Eye className="h-3 w-3 mr-1" />
-                          View
-                        </Button>
+                    <div className="text-xs sm:text-sm text-muted-foreground">
+                      <span>Issue Date: {new Date(invoice.issueDate).toLocaleDateString()}</span>
+                      {invoice.paymentTerms && (
+                        <span className="ml-4">Terms: {invoice.paymentTerms}</span>
+                      )}
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex flex-wrap gap-2 pt-2 border-t">
+                      <Button 
+                        size="sm" 
+                        variant="default"
+                        onClick={() => router.push(`/dashboard/invoices/${invoice._id}`)}
+                        className="text-xs h-8"
+                      >
+                        <Eye className="h-3 w-3 mr-1" />
+                        View
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => {
+                          window.open(`/api/invoices/${invoice._id}/pdf`, '_blank');
+                          toast.success("Opening invoice PDF...");
+                        }}
+                        className="text-xs h-8"
+                      >
+                        <Download className="h-3 w-3 mr-1" />
+                        PDF
+                      </Button>
+                      {invoice.order?._id && (
                         <Button 
                           size="sm" 
                           variant="outline"
-                          onClick={() => {
-                            window.open(`/api/invoices/${invoice._id}/pdf`, '_blank');
-                            toast.success("Opening invoice PDF...");
-                          }}
+                          onClick={() => router.push(`/dashboard/orders?search=${invoice.order.orderNumber}`)}
                           className="text-xs h-8"
                         >
-                          <Download className="h-3 w-3 mr-1" />
-                          PDF
+                          <ShoppingCart className="h-3 w-3 mr-1" />
+                          Order
                         </Button>
-                        {invoice.order?._id && (
+                      )}
+                      {isAdmin && (
+                        <>
                           <Button 
                             size="sm" 
                             variant="outline"
-                            onClick={() => router.push(`/dashboard/orders?search=${invoice.order.orderNumber}`)}
+                            onClick={() => handleEdit(invoice)}
                             className="text-xs h-8"
                           >
-                            <ShoppingCart className="h-3 w-3 mr-1" />
-                            Order
+                            <Pencil className="h-3 w-3 mr-1" />
+                            Edit
                           </Button>
-                        )}
-                        {isAdmin && (
-                          <>
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              onClick={() => handleEdit(invoice)}
-                              className="text-xs h-8"
-                            >
-                              <Pencil className="h-3 w-3 mr-1" />
-                              Edit
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="destructive"
-                              onClick={() => handleDeleteClick(invoice)}
-                              className="text-xs h-8"
-                            >
-                              <Trash2 className="h-3 w-3 mr-1" />
-                              Delete
-                            </Button>
-                          </>
-                        )}
-                      </div>
+                          <Button 
+                            size="sm" 
+                            variant="destructive"
+                            onClick={() => handleDeleteClick(invoice)}
+                            className="text-xs h-8"
+                          >
+                            <Trash2 className="h-3 w-3 mr-1" />
+                            Delete
+                          </Button>
+                        </>
+                      )}
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+            
+            {/* Loading more indicator */}
+            {isFetchingNextPage && (
+              <div className="flex justify-center py-4">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+                <span className="ml-2 text-sm text-muted-foreground">Loading more invoices...</span>
               </div>
-              
-              {/* Infinite Scroll Loading Indicator */}
-              {isLoadingMore && (
-                <div className="flex flex-col items-center justify-center py-6 gap-2">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
-                  <p className="text-sm text-muted-foreground">Loading more invoices...</p>
-                </div>
-              )}
-              
-              {/* End of Results Indicator */}
-              {!hasMoreInvoices && invoices.length > 0 && !searchQuery && (
-                <div className="text-center py-6">
-                  <p className="text-sm text-muted-foreground">
-                    You've reached the end of all invoices
-                  </p>
-                </div>
-              )}
-            </>
+            )}
+            
+            {/* End of results indicator */}
+            {!hasNextPage && !searchQuery && invoices.length > 0 && (
+              <div className="text-center py-4">
+                <p className="text-sm text-muted-foreground">No more invoices to load</p>
+              </div>
+            )}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -588,8 +481,8 @@ export default function InvoicesPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Updating..." : "Update Invoice"}
+              <Button type="submit" disabled={updateInvoice.isPending}>
+                {updateInvoice.isPending ? "Updating..." : "Update Invoice"}
               </Button>
             </DialogFooter>
           </form>
@@ -611,8 +504,9 @@ export default function InvoicesPage() {
             <AlertDialogAction
               onClick={handleDeleteConfirm}
               className="bg-red-600 hover:bg-red-700"
+              disabled={deleteInvoice.isPending}
             >
-              Delete
+              {deleteInvoice.isPending ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

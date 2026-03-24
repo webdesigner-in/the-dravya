@@ -2,6 +2,7 @@ import { Patrick_Hand } from "next/font/google"
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/components/providers/AuthProvider";
+import { QueryProvider } from "@/components/providers/QueryProvider";
 import { Toaster } from "@/components/ui/sonner";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
@@ -25,10 +26,12 @@ export default function RootLayout({ children }) {
       
       <body className={patrickHand.className}>
        <ErrorBoundary>
-         <AuthProvider>
-           <TooltipProvider>{children}</TooltipProvider>
-           <Toaster position="top-right" />     
-         </AuthProvider>
+         <QueryProvider>
+           <AuthProvider>
+             <TooltipProvider>{children}</TooltipProvider>
+             <Toaster position="top-right" />     
+           </AuthProvider>
+         </QueryProvider>
        </ErrorBoundary>
       </body>
     </html>

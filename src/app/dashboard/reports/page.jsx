@@ -9,13 +9,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   FileText,
@@ -27,145 +20,62 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { toast } from "sonner";
 import Link from "next/link";
 import PageHeader from "@/components/layout/PageHeader";
+import { useCustomerLedger } from "@/hooks/useAnalytics";
+import { useOrders } from "@/hooks/useOrders";
 
 export default function ReportsPage() {
-  const [customerLedger, setCustomerLedger] = useState([]);
-  const [allLoadedLedger, setAllLoadedLedger] = useState([]); // Cache all loaded ledger data
-  const [filteredLedger, setFilteredLedger] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false); // New: Loading more ledger data
-  const [hasMoreLedger, setHasMoreLedger] = useState(true); // New: Track if more ledger data available
-  const [isAdmin, setIsAdmin] = useState(false);
   const [expandedCustomer, setExpandedCustomer] = useState(null);
-  const [customerOrders, setCustomerOrders] = useState([]);
-  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
-  const [summary, setSummary] = useState({
+  
+  // React Query hooks with infinite scroll
+  const { 
+    data, 
+    isLoading, 
+    fetchNextPage, 
+    hasNextPage, 
+    isFetchingNextPage 
+  } = useCustomerLedger({});
+  const { data: ordersData, isLoading: isLoadingOrders } = useOrders({ 
+    customer: expandedCustomer,
+    page: 1,
+    limit: 100
+  }, { enabled: !!expandedCustomer });
+  
+  // Flatten all pages into single array
+  const allLedger = data?.pages?.flatMap(page => page.ledger) || [];
+  const isAdmin = data?.pages?.[0]?.isAdmin || false;
+  const summary = data?.pages?.[0]?.summary || {
     totalRevenue: 0,
     totalPaid: 0,
     totalDue: 0,
     totalCustomers: 0,
-  });
-  
-  // Pagination state (kept for API compatibility)
-  const [pagination, setPagination] = useState({
+  };
+  const pagination = data?.pages?.[0]?.pagination || {
     currentPage: 1,
     totalPages: 1,
     totalItems: 0,
     itemsPerPage: 20,
     hasMore: false,
-  });
-
-  useEffect(() => {
-    fetchCustomerLedger();
-  }, []);
-
-  // Infinite scroll implementation for reports
-  useEffect(() => {
-    const handleScroll = () => {
-      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-      const windowHeight = window.innerHeight;
-      const documentHeight = document.documentElement.scrollHeight;
-      
-      const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
-      
-      if (isNearBottom && !isLoading && !isLoadingMore && hasMoreLedger && !searchQuery) {
-        loadMoreLedger();
-      }
-    };
-
-    let scrollTimeout;
-    const throttledScroll = () => {
-      clearTimeout(scrollTimeout);
-      scrollTimeout = setTimeout(handleScroll, 100);
-    };
-
-    window.addEventListener('scroll', throttledScroll);
-    return () => {
-      window.removeEventListener('scroll', throttledScroll);
-      clearTimeout(scrollTimeout);
-    };
-  }, [isLoading, isLoadingMore, hasMoreLedger, searchQuery]);
-
-  // Load more ledger data function
-  const loadMoreLedger = async () => {
-    if (isLoadingMore || !hasMoreLedger) return;
-    
-    setIsLoadingMore(true);
-    try {
-      const nextPage = Math.floor(allLoadedLedger.length / 20) + 1;
-      const response = await fetch(`/api/reports/customer-ledger?page=${nextPage}&limit=20`);
-      
-      if (response.ok) {
-        const data = await response.json();
-        const newLedger = data.ledger || [];
-        
-        if (newLedger.length === 0) {
-          setHasMoreLedger(false);
-        } else {
-          setAllLoadedLedger(prev => [...prev, ...newLedger]);
-          setCustomerLedger(prev => [...prev, ...newLedger]);
-          setFilteredLedger(prev => [...prev, ...newLedger]);
-          
-          if (data.pagination) {
-            setPagination(data.pagination);
-            setHasMoreLedger(data.pagination.hasMore);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load more ledger data:', error);
-    } finally {
-      setIsLoadingMore(false);
-    }
   };
-
-  useEffect(() => {
-    if (searchQuery.trim() === "") {
-      setFilteredLedger(allLoadedLedger);
-    } else {
-      const query = searchQuery.toLowerCase();
-      const filtered = allLoadedLedger.filter(
-        (ledger) =>
-          ledger.customer?.name?.toLowerCase().includes(query) ||
-          ledger.customer?.phone?.includes(query)
+  
+  const customerOrders = ordersData?.orders || [];
+  
+  // Filter ledger based on search query
+  const filteredLedger = searchQuery.trim() === ""
+    ? allLedger
+    : allLedger.filter(
+        (item) =>
+          item.customer?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          item.customer?.phone?.includes(searchQuery)
       );
-      setFilteredLedger(filtered);
-    }
-  }, [searchQuery, allLoadedLedger]);
 
-  const fetchCustomerLedger = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch(`/api/reports/customer-ledger?page=1&limit=20`);
-      if (response.ok) {
-        const data = await response.json();
-        const ledgerData = data.ledger || [];
-        
-        setCustomerLedger(ledgerData);
-        setAllLoadedLedger(ledgerData);
-        setFilteredLedger(ledgerData);
-        setIsAdmin(data.isAdmin || false);
-        
-        // Only set summary if provided (admin only)
-        if (data.summary) {
-          setSummary(data.summary);
-        }
-        
-        if (data.pagination) {
-          setPagination(data.pagination);
-          setHasMoreLedger(data.pagination.hasMore);
-        }
-      } else {
-        toast.error("Failed to fetch customer ledger");
-      }
-    } catch (error) {
-      toast.error("Failed to fetch customer ledger");
-    } finally {
-      setIsLoading(false);
+  const handleToggleExpand = (customerId) => {
+    if (expandedCustomer === customerId) {
+      setExpandedCustomer(null);
+    } else {
+      setExpandedCustomer(customerId);
     }
   };
 
@@ -177,32 +87,23 @@ export default function ReportsPage() {
     return `${day}-${month}-${year}`;
   };
 
-  const fetchCustomerOrders = async (customerId) => {
-    try {
-      setIsLoadingOrders(true);
-      const response = await fetch(`/api/orders?customer=${customerId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setCustomerOrders(data.orders || []);
-      } else {
-        toast.error("Failed to fetch customer orders");
+  // Infinite scroll implementation
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const windowHeight = window.innerHeight;
+      const documentHeight = document.documentElement.scrollHeight;
+      
+      const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
+      
+      if (isNearBottom && !isLoading && !isFetchingNextPage && hasNextPage && !searchQuery) {
+        fetchNextPage();
       }
-    } catch (error) {
-      toast.error("Failed to fetch customer orders");
-    } finally {
-      setIsLoadingOrders(false);
-    }
-  };
+    };
 
-  const handleToggleExpand = async (customerId) => {
-    if (expandedCustomer === customerId) {
-      setExpandedCustomer(null);
-      setCustomerOrders([]);
-    } else {
-      setExpandedCustomer(customerId);
-      await fetchCustomerOrders(customerId);
-    }
-  };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [isLoading, isFetchingNextPage, hasNextPage, searchQuery, fetchNextPage]);
 
   return (
     <div className="space-y-6">
@@ -334,8 +235,8 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {filteredLedger.map((ledger) => (
-                    <React.Fragment key={ledger.customer._id}>
+                  {filteredLedger.map((ledger, index) => (
+                    <React.Fragment key={`${ledger.customer._id}-${index}`}>
                       <tr className="hover:bg-muted/50">
                         <td className="py-3 px-2">
                           <div>
@@ -479,7 +380,7 @@ export default function ReportsPage() {
           )}
           
           {/* Loading more indicator */}
-          {isLoadingMore && (
+          {isFetchingNextPage && (
             <div className="flex justify-center py-4">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
               <span className="ml-2 text-sm text-muted-foreground">Loading more...</span>
@@ -487,7 +388,7 @@ export default function ReportsPage() {
           )}
           
           {/* End of results indicator */}
-          {!isLoading && !isLoadingMore && !hasMoreLedger && !searchQuery && filteredLedger.length > 0 && (
+          {!hasNextPage && !searchQuery && filteredLedger.length > 0 && (
             <div className="text-center py-4">
               <p className="text-sm text-muted-foreground">No more data to load</p>
             </div>

@@ -53,43 +53,49 @@ import {
 import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
 import { useAuthStore } from "@/store/authStore";
+import { useTransactions, useCreateTransaction, useUpdateTransaction, useDeleteTransaction } from "@/hooks/useTransactions";
+import { useCustomers } from "@/hooks/useCustomers";
+import { useOrders } from "@/hooks/useOrders";
 
 export default function TransactionsPage() {
   const router = useRouter();
   const isAdmin = useAuthStore((state) => state.isAdmin());
   const hasShownAccessDenied = useRef(false);
-  const [transactions, setTransactions] = useState([]);
-  const [allLoadedTransactions, setAllLoadedTransactions] = useState([]); // Cache all loaded transactions
-  const [summary, setSummary] = useState({
-    totalIncome: 0,
-    totalExpense: 0,
-    netProfit: 0,
+  
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  
+  // React Query hooks with infinite scroll
+  const { 
+    data, 
+    isLoading, 
+    error,
+    fetchNextPage, 
+    hasNextPage, 
+    isFetchingNextPage 
+  } = useTransactions({ 
+    type: typeFilter !== "all" ? typeFilter : undefined,
+    search: searchQuery || undefined
   });
-  const [customers, setCustomers] = useState([]);
-  const [orders, setOrders] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false); // New: Loading more transactions
-  const [hasMoreTransactions, setHasMoreTransactions] = useState(true); // New: Track if more transactions available
-  const [transactionsLoaded, setTransactionsLoaded] = useState(false);
+  const createTransaction = useCreateTransaction();
+  const updateTransaction = useUpdateTransaction();
+  const deleteTransaction = useDeleteTransaction();
+  
+  // Fetch customers and orders for dropdowns
+  const { data: customersData } = useCustomers({});
+  const { data: ordersData } = useOrders({});
+  
+  // Flatten all pages
+  const transactions = data?.pages?.flatMap(page => page.transactions) || [];
+  const summary = data?.pages?.[0]?.summary || { totalIncome: 0, totalExpense: 0, netProfit: 0 };
+  const customers = customersData?.pages?.flatMap(page => page.customers) || [];
+  const orders = ordersData?.pages?.flatMap(page => page.orders) || [];
+  
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [transactionToDelete, setTransactionToDelete] = useState(null);
-  
-  // Pagination state (kept for API compatibility)
-  const [pagination, setPagination] = useState({
-    currentPage: 1,
-    totalPages: 1,
-    totalItems: 0,
-    itemsPerPage: 20,
-    hasMore: false,
-  });
-
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [dateFilter, setDateFilter] = useState("all");
-  const [searchQuery, setSearchQuery] = useState("");
 
   const [formData, setFormData] = useState({
     type: "income",
@@ -114,22 +120,7 @@ export default function TransactionsPage() {
     }
   }, [isAdmin, router]);
 
-  useEffect(() => {
-    if (isAdmin && transactionsLoaded) {
-      fetchTransactions();
-      fetchCustomers();
-      fetchOrders();
-    }
-  }, [typeFilter, categoryFilter, dateFilter, searchQuery, isAdmin, transactionsLoaded]);
-
-  // Auto-load transactions on mount
-  useEffect(() => {
-    if (isAdmin && !transactionsLoaded) {
-      setTransactionsLoaded(true);
-    }
-  }, [isAdmin, transactionsLoaded]);
-
-  // Infinite scroll implementation for transactions
+  // Infinite scroll implementation
   useEffect(() => {
     const handleScroll = () => {
       const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
@@ -138,117 +129,14 @@ export default function TransactionsPage() {
       
       const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
       
-      if (isNearBottom && !isLoading && !isLoadingMore && hasMoreTransactions && transactionsLoaded && !searchQuery) {
-        loadMoreTransactions();
+      if (isNearBottom && !isLoading && !isFetchingNextPage && hasNextPage && !searchQuery) {
+        fetchNextPage();
       }
     };
 
-    let scrollTimeout;
-    const throttledScroll = () => {
-      clearTimeout(scrollTimeout);
-      scrollTimeout = setTimeout(handleScroll, 100);
-    };
-
-    window.addEventListener('scroll', throttledScroll);
-    return () => {
-      window.removeEventListener('scroll', throttledScroll);
-      clearTimeout(scrollTimeout);
-    };
-  }, [isLoading, isLoadingMore, hasMoreTransactions, transactionsLoaded, searchQuery]);
-
-  // Load more transactions function
-  const loadMoreTransactions = async () => {
-    if (isLoadingMore || !hasMoreTransactions) return;
-    
-    setIsLoadingMore(true);
-    try {
-      const nextPage = Math.floor(allLoadedTransactions.length / 20) + 1;
-      let url = "/api/transactions?";
-      if (typeFilter !== "all") url += `type=${typeFilter}&`;
-      if (categoryFilter !== "all") url += `category=${categoryFilter}&`;
-      if (dateFilter !== "all") url += `date=${dateFilter}&`;
-      url += `page=${nextPage}&limit=20`;
-
-      const response = await fetch(url);
-      if (response.ok) {
-        const data = await response.json();
-        const newTransactions = data.transactions || [];
-        
-        if (newTransactions.length === 0) {
-          setHasMoreTransactions(false);
-        } else {
-          setAllLoadedTransactions(prev => [...prev, ...newTransactions]);
-          setTransactions(prev => [...prev, ...newTransactions]);
-          
-          if (data.pagination) {
-            setPagination(data.pagination);
-            setHasMoreTransactions(data.pagination.hasMore);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load more transactions:', error);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  };
-
-  const fetchTransactions = async () => {
-    try {
-      setIsLoading(true);
-      let url = "/api/transactions?";
-      if (typeFilter !== "all") url += `type=${typeFilter}&`;
-      if (categoryFilter !== "all") url += `category=${categoryFilter}&`;
-      if (dateFilter !== "all") url += `date=${dateFilter}&`;
-      if (searchQuery) url += `search=${encodeURIComponent(searchQuery)}&`;
-      url += `page=1&limit=20`;
-
-      const response = await fetch(url);
-      if (response.ok) {
-        const data = await response.json();
-        const transactionsData = data.transactions || [];
-        
-        setTransactions(transactionsData);
-        setAllLoadedTransactions(transactionsData);
-        setSummary(data.summary || { totalIncome: 0, totalExpense: 0, netProfit: 0 });
-        
-        if (data.pagination) {
-          setPagination(data.pagination);
-          setHasMoreTransactions(data.pagination.hasMore);
-        }
-      }
-    } catch (error) {
-      toast.error("Failed to fetch transactions");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-
-
-  const fetchCustomers = async () => {
-    try {
-      const response = await fetch("/api/customers");
-      if (response.ok) {
-        const data = await response.json();
-        setCustomers(data.customers || []);
-      }
-    } catch (error) {
-      // Error already logged
-    }
-  };
-
-  const fetchOrders = async () => {
-    try {
-      const response = await fetch("/api/orders");
-      if (response.ok) {
-        const data = await response.json();
-        setOrders(data.orders || []);
-      }
-    } catch (error) {
-      // Error already logged
-    }
-  };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [isLoading, isFetchingNextPage, hasNextPage, searchQuery, fetchNextPage]);
 
   const resetForm = () => {
     setFormData({
@@ -294,55 +182,31 @@ export default function TransactionsPage() {
     if (!transactionToDelete) return;
 
     try {
-      const response = await fetch(`/api/transactions/${transactionToDelete._id}`, {
-        method: "DELETE",
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to delete transaction");
-      }
-
-      toast.success("Transaction deleted successfully!");
+      await deleteTransaction.mutateAsync(transactionToDelete._id);
       setIsDeleteDialogOpen(false);
       setTransactionToDelete(null);
-      fetchTransactions();
     } catch (error) {
-      toast.error(error.message);
+      // Error toast shown automatically
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsSubmitting(true);
 
     try {
-      const url = editingTransaction
-        ? `/api/transactions/${editingTransaction._id}`
-        : "/api/transactions";
-      const method = editingTransaction ? "PUT" : "POST";
-
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || `Failed to ${editingTransaction ? 'update' : 'create'} transaction`);
+      if (editingTransaction) {
+        await updateTransaction.mutateAsync({
+          transactionId: editingTransaction._id,
+          updates: formData,
+        });
+      } else {
+        await createTransaction.mutateAsync(formData);
       }
 
-      toast.success(`Transaction ${editingTransaction ? 'updated' : 'created'} successfully!`);
       resetForm();
       setIsDialogOpen(false);
-      fetchTransactions();
     } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setIsSubmitting(false);
+      // Error toast shown automatically
     }
   };
 
@@ -387,7 +251,6 @@ export default function TransactionsPage() {
             </DialogHeader>
             <form onSubmit={handleSubmit}>
               <div className="space-y-4">
-                {/* Type, Category, Amount, Date - 4 columns on desktop */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="type" className="text-sm">Type *</Label>
@@ -458,7 +321,6 @@ export default function TransactionsPage() {
                   </div>
                 </div>
 
-                {/* Payment Method and Status */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="paymentMethod" className="text-sm">Payment Method *</Label>
@@ -500,7 +362,6 @@ export default function TransactionsPage() {
                   </div>
                 </div>
 
-                {/* Customer and Order (only for income) */}
                 {formData.type === "income" && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -546,7 +407,6 @@ export default function TransactionsPage() {
                   </div>
                 )}
 
-                {/* Description and Reference */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="description" className="text-sm">Description *</Label>
@@ -573,7 +433,6 @@ export default function TransactionsPage() {
                   </div>
                 </div>
 
-                {/* Notes */}
                 <div className="space-y-2">
                   <Label htmlFor="notes" className="text-sm">Notes</Label>
                   <Textarea
@@ -599,8 +458,14 @@ export default function TransactionsPage() {
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isSubmitting} className="w-full sm:w-auto">
-                  {isSubmitting ? (editingTransaction ? "Updating..." : "Creating...") : (editingTransaction ? "Update Transaction" : "Create Transaction")}
+                <Button 
+                  type="submit" 
+                  disabled={createTransaction.isPending || updateTransaction.isPending} 
+                  className="w-full sm:w-auto"
+                >
+                  {createTransaction.isPending || updateTransaction.isPending
+                    ? (editingTransaction ? "Updating..." : "Creating...")
+                    : (editingTransaction ? "Update Transaction" : "Create Transaction")}
                 </Button>
               </DialogFooter>
             </form>
@@ -657,26 +522,18 @@ export default function TransactionsPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {/* Search Field */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
                 placeholder="Search by description, order number, customer name, or reference..."
                 value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setHasMoreTransactions(true); // Reset infinite scroll state
-                }}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
               />
             </div>
             
-            {/* Filter Dropdowns */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Select value={typeFilter} onValueChange={(value) => {
-                setTypeFilter(value);
-                setHasMoreTransactions(true);
-              }}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
                 <SelectTrigger>
                   <SelectValue placeholder="Type" />
                 </SelectTrigger>
@@ -686,10 +543,7 @@ export default function TransactionsPage() {
                   <SelectItem value="expense">Expense</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={categoryFilter} onValueChange={(value) => {
-                setCategoryFilter(value);
-                setHasMoreTransactions(true);
-              }}>
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
                 <SelectTrigger>
                   <SelectValue placeholder="Category" />
                 </SelectTrigger>
@@ -706,24 +560,9 @@ export default function TransactionsPage() {
                   <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={dateFilter} onValueChange={(value) => {
-                setDateFilter(value);
-                setHasMoreTransactions(true);
-              }}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Date" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Time</SelectItem>
-                  <SelectItem value="today">Today</SelectItem>
-                  <SelectItem value="week">This Week</SelectItem>
-                  <SelectItem value="month">This Month</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
             
-            {/* Clear Filters Button */}
-            {(searchQuery || typeFilter !== "all" || categoryFilter !== "all" || dateFilter !== "all") && (
+            {(searchQuery || typeFilter !== "all" || categoryFilter !== "all") && (
               <Button
                 variant="outline"
                 size="sm"
@@ -731,8 +570,6 @@ export default function TransactionsPage() {
                   setSearchQuery("");
                   setTypeFilter("all");
                   setCategoryFilter("all");
-                  setDateFilter("all");
-                  setHasMoreTransactions(true);
                 }}
                 className="w-full md:w-auto"
               >
@@ -748,22 +585,18 @@ export default function TransactionsPage() {
         <CardHeader>
           <CardTitle>All Transactions</CardTitle>
           <CardDescription>
-            {transactions.length > 0 ? (
-              <>
-                Showing {transactions.length} transaction(s)
-                {hasMoreTransactions && !searchQuery && (
-                  <span className="text-muted-foreground"> • Scroll down to load more</span>
-                )}
-              </>
-            ) : (
-              "Your transactions will appear here"
-            )}
+            {transactions.length > 0 ? `Showing ${transactions.length} transaction(s)` : "Your transactions will appear here"}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading && transactions.length === 0 ? (
+          {isLoading ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+            </div>
+          ) : error ? (
+            <div className="text-center py-8">
+              <p className="text-red-600">Failed to load transactions</p>
+              <p className="text-sm text-muted-foreground mt-2">{error.message}</p>
             </div>
           ) : transactions.length === 0 ? (
             <div className="text-center py-8">
@@ -771,111 +604,106 @@ export default function TransactionsPage() {
               <p className="mt-2 text-muted-foreground">No transactions found</p>
             </div>
           ) : (
-            <>
-              <div className="space-y-4">
-                {transactions.map((transaction) => (
-                <Card key={transaction._id}>
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex items-start gap-3 flex-1 min-w-0">
-                        {transaction.type === "income" ? (
-                          <TrendingUp className="h-5 w-5 text-green-600 mt-1 shrink-0" />
-                        ) : (
-                          <TrendingDown className="h-5 w-5 text-red-600 mt-1 shrink-0" />
-                        )}
-                        <div className="space-y-1 flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-semibold">
-                              {transaction.transactionNumber}
-                            </h3>
-                            <span className="text-xs px-2 py-1 rounded bg-gray-100 capitalize">
-                              {transaction.category}
-                            </span>
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {transaction.description}
-                          </p>
-                          <div className="flex gap-4 text-xs text-muted-foreground flex-wrap">
-                            <span>
-                              {new Date(transaction.date).toLocaleDateString()}
-                            </span>
-                            <span className="capitalize">
-                              {transaction.paymentMethod}
-                            </span>
-                            {transaction.customer ? (
-                              <span>{transaction.customer.name}</span>
-                            ) : transaction.order?.orderType === 'guest' && transaction.order?.guestInfo?.name ? (
-                              <span>{transaction.order.guestInfo.name} (Guest)</span>
-                            ) : null}
-                          </div>
+            <div className="space-y-4">
+              {transactions.map((transaction) => (
+              <Card key={transaction._id}>
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      {transaction.type === "income" ? (
+                        <TrendingUp className="h-5 w-5 text-green-600 mt-1 shrink-0" />
+                      ) : (
+                        <TrendingDown className="h-5 w-5 text-red-600 mt-1 shrink-0" />
+                      )}
+                      <div className="space-y-1 flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-semibold">
+                            {transaction.transactionNumber}
+                          </h3>
+                          <span className="text-xs px-2 py-1 rounded bg-gray-100 capitalize">
+                            {transaction.category}
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {transaction.description}
+                        </p>
+                        <div className="flex gap-4 text-xs text-muted-foreground flex-wrap">
+                          <span>
+                            {new Date(transaction.date).toLocaleDateString()}
+                          </span>
+                          <span className="capitalize">
+                            {transaction.paymentMethod}
+                          </span>
+                          {transaction.customer ? (
+                            <span>{transaction.customer.name}</span>
+                          ) : transaction.order?.orderType === 'guest' && transaction.order?.guestInfo?.name ? (
+                            <span>{transaction.order.guestInfo.name} (Guest)</span>
+                          ) : null}
                         </div>
                       </div>
-                      <div className="flex flex-col items-end gap-2 shrink-0">
-                        <p
-                          className={`text-lg font-bold ${
-                            transaction.type === "income"
-                              ? "text-green-600"
-                              : "text-red-600"
-                          }`}
-                        >
-                          {transaction.type === "income" ? "+" : "-"}₹
-                          {transaction.amount.toFixed(2)}
-                        </p>
-                        <span
-                          className={`text-xs px-2 py-1 rounded ${
-                            transaction.paymentStatus === "completed"
-                              ? "bg-green-100 text-green-700"
-                              : transaction.paymentStatus === "pending"
-                              ? "bg-yellow-100 text-yellow-700"
-                              : "bg-red-100 text-red-700"
-                          }`}
-                        >
-                          {transaction.paymentStatus}
-                        </span>
-                        {isAdmin && (
-                          <div className="flex gap-2 mt-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleEdit(transaction)}
-                            >
-                              <Pencil className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleDeleteClick(transaction)}
-                            >
-                              <Trash2 className="h-3 w-3 text-red-600" />
-                            </Button>
-                          </div>
-                        )}
-                      </div>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      <p
+                        className={`text-lg font-bold ${
+                          transaction.type === "income"
+                            ? "text-green-600"
+                            : "text-red-600"
+                        }`}
+                      >
+                        {transaction.type === "income" ? "+" : "-"}₹
+                        {transaction.amount.toFixed(2)}
+                      </p>
+                      <span
+                        className={`text-xs px-2 py-1 rounded ${
+                          transaction.paymentStatus === "completed"
+                            ? "bg-green-100 text-green-700"
+                            : transaction.paymentStatus === "pending"
+                            ? "bg-yellow-100 text-yellow-700"
+                            : "bg-red-100 text-red-700"
+                        }`}
+                      >
+                        {transaction.paymentStatus}
+                      </span>
+                      {isAdmin && (
+                        <div className="flex gap-2 mt-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEdit(transaction)}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteClick(transaction)}
+                          >
+                            <Trash2 className="h-3 w-3 text-red-600" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+            
+            {/* Loading more indicator */}
+            {isFetchingNextPage && (
+              <div className="flex justify-center py-4">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+                <span className="ml-2 text-sm text-muted-foreground">Loading more transactions...</span>
               </div>
-              
-              {/* Infinite Scroll Loading Indicator */}
-              {isLoadingMore && (
-                <div className="flex flex-col items-center justify-center py-6 gap-2">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
-                  <p className="text-sm text-muted-foreground">Loading more transactions...</p>
-                </div>
-              )}
-              
-              {/* End of Results Indicator */}
-              {!hasMoreTransactions && transactions.length > 0 && !searchQuery && (
-                <div className="text-center py-6">
-                  <p className="text-sm text-muted-foreground">
-                    You've reached the end of all transactions
-                  </p>
-                </div>
-              )}
-            </>
+            )}
+            
+            {/* End of results indicator */}
+            {!hasNextPage && !searchQuery && transactions.length > 0 && (
+              <div className="text-center py-4">
+                <p className="text-sm text-muted-foreground">No more transactions to load</p>
+              </div>
+            )}
+            </div>
           )}
-          
         </CardContent>
       </Card>
 
@@ -895,8 +723,9 @@ export default function TransactionsPage() {
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-red-600 hover:bg-red-700"
+              disabled={deleteTransaction.isPending}
             >
-              Delete
+              {deleteTransaction.isPending ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

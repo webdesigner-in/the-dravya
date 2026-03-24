@@ -27,7 +27,7 @@ export async function GET() {
       {
         status: 'error',
         timestamp: new Date().toISOString(),
-        error: error.message,
+        error: process.env.NODE_ENV !== 'production' ? error.message : 'Service unavailable',
       },
       { status: 503 }
     );

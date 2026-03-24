@@ -40,27 +40,36 @@ import {
 } from "@/components/ui/select";
 import { UserPlus, Trash2, Eye, EyeOff, Pencil, Info } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
+import { useUsers, useCreateUser, useUpdateUser, useDeleteUser } from "@/hooks/useUsers";
 
 export default function UsersPage() {
   const isAdmin = useAuthStore((state) => state.isAdmin());
   const currentUser = useAuthStore((state) => state.user);
   const router = useRouter();
-  const [users, setUsers] = useState([]);
-  const [allLoadedUsers, setAllLoadedUsers] = useState([]); // Cache all loaded users
-  const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false); // Loading more users
-  const [hasMoreUsers, setHasMoreUsers] = useState(true); // Track if more users available
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [userToDelete, setUserToDelete] = useState(null);
   const [selectedUser, setSelectedUser] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showEditPassword, setShowEditPassword] = useState(false);
+  
+  // React Query hooks with infinite scroll
+  const { 
+    data, 
+    isLoading, 
+    fetchNextPage, 
+    hasNextPage, 
+    isFetchingNextPage 
+  } = useUsers({});
+  const createUser = useCreateUser();
+  const updateUser = useUpdateUser();
+  const deleteUser = useDeleteUser();
+  
+  // Flatten all pages into single array
+  const users = data?.pages?.flatMap(page => page.users) || [];
 
   // Generate a unique fake phone number
   const generateFakePhone = () => {
@@ -87,7 +96,6 @@ export default function UsersPage() {
     address: "",
   });
 
-  // Redirect if not admin
   useEffect(() => {
     if (!isAdmin) {
       router.push("/dashboard");
@@ -105,66 +113,7 @@ export default function UsersPage() {
     }
   }, [isDialogOpen]);
 
-  const fetchUsers = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch("/api/users?page=1&limit=20");
-      if (response.ok) {
-        const data = await response.json();
-        const userData = data.users || [];
-        setUsers(userData);
-        setAllLoadedUsers(userData);
-        
-        // Check if there are more users to load
-        if (userData.length < 20) {
-          setHasMoreUsers(false);
-        }
-      }
-    } catch (error) {
-      toast.error("Failed to fetch users");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Load more users function
-  const loadMoreUsers = async () => {
-    if (isLoadingMore || !hasMoreUsers) return;
-    
-    setIsLoadingMore(true);
-    try {
-      const nextPage = Math.floor(allLoadedUsers.length / 20) + 1;
-      const response = await fetch(`/api/users?page=${nextPage}&limit=20`);
-      
-      if (response.ok) {
-        const data = await response.json();
-        const newUsers = data.users || [];
-        
-        if (newUsers.length === 0) {
-          setHasMoreUsers(false);
-        } else {
-          setAllLoadedUsers(prev => [...prev, ...newUsers]);
-          setUsers(prev => [...prev, ...newUsers]);
-          
-          if (newUsers.length < 20) {
-            setHasMoreUsers(false);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load more users:', error);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  };
-
-  useEffect(() => {
-    if (isAdmin) {
-      fetchUsers();
-    }
-  }, [isAdmin]);
-
-  // Infinite scroll implementation for users
+  // Infinite scroll implementation
   useEffect(() => {
     const handleScroll = () => {
       const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
@@ -173,49 +122,27 @@ export default function UsersPage() {
       
       const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
       
-      if (isNearBottom && !isLoading && !isLoadingMore && hasMoreUsers) {
-        loadMoreUsers();
+      if (isNearBottom && !isLoading && !isFetchingNextPage && hasNextPage) {
+        fetchNextPage();
       }
     };
 
-    let scrollTimeout;
-    const throttledScroll = () => {
-      clearTimeout(scrollTimeout);
-      scrollTimeout = setTimeout(handleScroll, 100);
-    };
-
-    window.addEventListener('scroll', throttledScroll);
-    return () => {
-      window.removeEventListener('scroll', throttledScroll);
-      clearTimeout(scrollTimeout);
-    };
-  }, [isLoading, isLoadingMore, hasMoreUsers]);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [isLoading, isFetchingNextPage, hasNextPage, fetchNextPage]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsSubmitting(true);
 
     try {
-      // Prepare data with defaults if fields are empty
       const userData = {
         ...formData,
         phone: formData.phone.trim() || generateFakePhone(),
         address: formData.address.trim() || "Gwalior, Madhya Pradesh",
       };
 
-      const response = await fetch("/api/users/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(userData),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to create user");
-      }
-
-      toast.success("User created successfully!");
+      await createUser.mutateAsync(userData);
+      
       setFormData({
         name: "",
         email: "",
@@ -225,18 +152,13 @@ export default function UsersPage() {
         address: "Gwalior, Madhya Pradesh",
       });
       setIsDialogOpen(false);
-      fetchUsers();
     } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setIsSubmitting(false);
+      // Error toast shown automatically by hook
     }
   };
 
   const handleDeleteClick = (user) => {
-    // Check if trying to delete own account
     if (currentUser?.id === user.id) {
-      toast.error("You cannot delete your own account");
       return;
     }
     setUserToDelete(user);
@@ -247,20 +169,9 @@ export default function UsersPage() {
     if (!userToDelete) return;
 
     try {
-      const response = await fetch(`/api/users/${userToDelete.id}`, {
-        method: "DELETE",
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to delete user");
-      }
-
-      toast.success("User deleted successfully!");
-      fetchUsers();
+      await deleteUser.mutateAsync(userToDelete.id);
     } catch (error) {
-      toast.error(error.message);
+      // Error toast shown automatically by hook
     } finally {
       setIsDeleteDialogOpen(false);
       setUserToDelete(null);
@@ -274,11 +185,9 @@ export default function UsersPage() {
         const data = await response.json();
         setSelectedUser(data.user);
         setIsDetailsDialogOpen(true);
-      } else {
-        toast.error("Failed to fetch user details");
       }
     } catch (error) {
-      toast.error("Failed to fetch user details");
+      // Error handled
     }
   };
 
@@ -297,32 +206,21 @@ export default function UsersPage() {
           address: data.user.address || "",
         });
         setIsEditDialogOpen(true);
-      } else {
-        toast.error("Failed to fetch user details");
       }
     } catch (error) {
-      toast.error("Failed to fetch user details");
+      // Error handled
     }
   };
 
   const handleEditSubmit = async (e) => {
     e.preventDefault();
-    setIsSubmitting(true);
 
     try {
-      const response = await fetch(`/api/users/${selectedUser.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editFormData),
+      await updateUser.mutateAsync({
+        userId: selectedUser.id,
+        updates: editFormData,
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to update user");
-      }
-
-      toast.success("User updated successfully!");
       setIsEditDialogOpen(false);
       setSelectedUser(null);
       setEditFormData({
@@ -333,11 +231,8 @@ export default function UsersPage() {
         phone: "",
         address: "",
       });
-      fetchUsers();
     } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setIsSubmitting(false);
+      // Error toast shown automatically by hook
     }
   };
 
@@ -467,8 +362,8 @@ export default function UsersPage() {
                 </div>
               </div>
               <DialogFooter className="mt-6">
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? "Creating..." : "Create User"}
+                <Button type="submit" disabled={createUser.isPending}>
+                  {createUser.isPending ? "Creating..." : "Create User"}
                 </Button>
               </DialogFooter>
             </form>
@@ -548,7 +443,7 @@ export default function UsersPage() {
               ))}
               
               {/* Loading more indicator */}
-              {isLoadingMore && (
+              {isFetchingNextPage && (
                 <div className="flex justify-center py-4">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
                   <span className="ml-2 text-sm text-muted-foreground">Loading more users...</span>
@@ -556,7 +451,7 @@ export default function UsersPage() {
               )}
               
               {/* End of results indicator */}
-              {!isLoading && !isLoadingMore && !hasMoreUsers && users.length > 0 && (
+              {!hasNextPage && users.length > 0 && (
                 <div className="text-center py-4">
                   <p className="text-sm text-muted-foreground">No more users to load</p>
                 </div>
@@ -741,8 +636,8 @@ export default function UsersPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Updating..." : "Update User"}
+              <Button type="submit" disabled={updateUser.isPending}>
+                {updateUser.isPending ? "Updating..." : "Update User"}
               </Button>
             </DialogFooter>
           </form>
@@ -765,8 +660,9 @@ export default function UsersPage() {
             <AlertDialogAction
               onClick={handleDeleteConfirm}
               className="bg-red-600 hover:bg-red-700"
+              disabled={deleteUser.isPending}
             >
-              Delete
+              {deleteUser.isPending ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

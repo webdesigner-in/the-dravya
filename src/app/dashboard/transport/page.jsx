@@ -32,23 +32,34 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Truck, Edit, Trash2 } from "lucide-react";
-import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
+import { useVehicles, useCreateVehicle, useUpdateVehicle, useDeleteVehicle } from "@/hooks/useVehicles";
+import { useUsers } from "@/hooks/useUsers";
 
 export default function TransportPage() {
   const router = useRouter();
   const user = useAuthStore((state) => state.user);
   const isAdmin = useAuthStore((state) => state.isAdmin());
   const hasShownAccessDenied = useRef(false);
-  const [vehicles, setVehicles] = useState([]);
-  const [allLoadedVehicles, setAllLoadedVehicles] = useState([]); // Cache all loaded vehicles
-  const [users, setUsers] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false); // Loading more vehicles
-  const [hasMoreVehicles, setHasMoreVehicles] = useState(true); // Track if more vehicles available
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingVehicle, setEditingVehicle] = useState(null);
+  
+  // React Query hooks with infinite scroll
+  const { 
+    data, 
+    isLoading, 
+    fetchNextPage, 
+    hasNextPage, 
+    isFetchingNextPage 
+  } = useVehicles({});
+  const { data: usersData } = useUsers({});
+  const createVehicle = useCreateVehicle();
+  const updateVehicle = useUpdateVehicle();
+  const deleteVehicle = useDeleteVehicle();
+  
+  // Flatten all pages into single array
+  const vehicles = data?.pages?.flatMap(page => page.vehicles) || [];
+  const users = usersData?.pages?.flatMap(page => page.users) || [];
 
   const [formData, setFormData] = useState({
     vehicleNumber: "",
@@ -74,18 +85,10 @@ export default function TransportPage() {
     if (!isAdmin && !hasShownAccessDenied.current) {
       hasShownAccessDenied.current = true;
       router.push("/dashboard");
-      toast.error("Access denied. Transport management is only accessible to administrators.");
     }
   }, [isAdmin, router]);
 
-  useEffect(() => {
-    if (isAdmin) {
-      fetchVehicles();
-      fetchUsers();
-    }
-  }, [isAdmin]);
-
-  // Infinite scroll implementation for vehicles
+  // Infinite scroll implementation
   useEffect(() => {
     const handleScroll = () => {
       const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
@@ -94,88 +97,14 @@ export default function TransportPage() {
       
       const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
       
-      if (isNearBottom && !isLoading && !isLoadingMore && hasMoreVehicles) {
-        loadMoreVehicles();
+      if (isNearBottom && !isLoading && !isFetchingNextPage && hasNextPage) {
+        fetchNextPage();
       }
     };
 
-    let scrollTimeout;
-    const throttledScroll = () => {
-      clearTimeout(scrollTimeout);
-      scrollTimeout = setTimeout(handleScroll, 100);
-    };
-
-    window.addEventListener('scroll', throttledScroll);
-    return () => {
-      window.removeEventListener('scroll', throttledScroll);
-      clearTimeout(scrollTimeout);
-    };
-  }, [isLoading, isLoadingMore, hasMoreVehicles]);
-
-  const fetchVehicles = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch("/api/vehicles?page=1&limit=20");
-      if (response.ok) {
-        const data = await response.json();
-        const vehicleData = data.vehicles || [];
-        setVehicles(vehicleData);
-        setAllLoadedVehicles(vehicleData);
-        
-        // Check if there are more vehicles to load
-        if (vehicleData.length < 20) {
-          setHasMoreVehicles(false);
-        }
-      }
-    } catch (error) {
-      toast.error("Failed to fetch vehicles");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Load more vehicles function
-  const loadMoreVehicles = async () => {
-    if (isLoadingMore || !hasMoreVehicles) return;
-    
-    setIsLoadingMore(true);
-    try {
-      const nextPage = Math.floor(allLoadedVehicles.length / 20) + 1;
-      const response = await fetch(`/api/vehicles?page=${nextPage}&limit=20`);
-      
-      if (response.ok) {
-        const data = await response.json();
-        const newVehicles = data.vehicles || [];
-        
-        if (newVehicles.length === 0) {
-          setHasMoreVehicles(false);
-        } else {
-          setAllLoadedVehicles(prev => [...prev, ...newVehicles]);
-          setVehicles(prev => [...prev, ...newVehicles]);
-          
-          if (newVehicles.length < 20) {
-            setHasMoreVehicles(false);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load more vehicles:', error);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  };
-
-  const fetchUsers = async () => {
-    try {
-      const response = await fetch("/api/users");
-      if (response.ok) {
-        const data = await response.json();
-        setUsers(data.users || []);
-      }
-    } catch (error) {
-      // Error already logged by logger
-    }
-  };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [isLoading, isFetchingNextPage, hasNextPage, fetchNextPage]);
 
   const resetForm = () => {
     setFormData({
@@ -231,36 +160,21 @@ export default function TransportPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsSubmitting(true);
 
     try {
-      const url = editingVehicle
-        ? `/api/vehicles/${editingVehicle._id}`
-        : "/api/vehicles";
-      const method = editingVehicle ? "PUT" : "POST";
-
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to save vehicle");
+      if (editingVehicle) {
+        await updateVehicle.mutateAsync({
+          vehicleId: editingVehicle._id,
+          updates: formData,
+        });
+      } else {
+        await createVehicle.mutateAsync(formData);
       }
 
-      toast.success(
-        `Vehicle ${editingVehicle ? "updated" : "added"} successfully!`
-      );
       resetForm();
       setIsDialogOpen(false);
-      fetchVehicles();
     } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setIsSubmitting(false);
+      // Error toast shown automatically by hook
     }
   };
 
@@ -268,18 +182,9 @@ export default function TransportPage() {
     if (!confirm("Are you sure you want to delete this vehicle?")) return;
 
     try {
-      const response = await fetch(`/api/vehicles/${id}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to delete vehicle");
-      }
-
-      toast.success("Vehicle deleted successfully!");
-      fetchVehicles();
+      await deleteVehicle.mutateAsync(id);
     } catch (error) {
-      toast.error(error.message);
+      // Error toast shown automatically by hook
     }
   };
 
@@ -594,8 +499,8 @@ export default function TransportPage() {
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={isSubmitting}>
-                    {isSubmitting
+                  <Button type="submit" disabled={createVehicle.isPending || updateVehicle.isPending}>
+                    {createVehicle.isPending || updateVehicle.isPending
                       ? "Saving..."
                       : editingVehicle
                       ? "Update"
@@ -694,7 +599,7 @@ export default function TransportPage() {
         )}
         
         {/* Loading more indicator */}
-        {isLoadingMore && (
+        {isFetchingNextPage && (
           <div className="col-span-full flex justify-center py-4">
             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
             <span className="ml-2 text-sm text-muted-foreground">Loading more vehicles...</span>
@@ -702,7 +607,7 @@ export default function TransportPage() {
         )}
         
         {/* End of results indicator */}
-        {!isLoading && !isLoadingMore && !hasMoreVehicles && vehicles.length > 0 && (
+        {!hasNextPage && vehicles.length > 0 && (
           <div className="col-span-full text-center py-4">
             <p className="text-sm text-muted-foreground">No more vehicles to load</p>
           </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,13 +28,18 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
+import { useDashboard } from "@/hooks/useAnalytics";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 
 export default function DashboardPage() {
   const user = useAuthStore((state) => state.user);
   const isAdmin = useAuthStore((state) => state.isAdmin());
-  const [dashboardData, setDashboardData] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
+  
+  // Use React Query for dashboard data
+  const { data: dashboardResponse, isLoading, error, refetch } = useDashboard();
+  const dashboardData = dashboardResponse?.dashboard;
   
   // Dialog states
   const [isRevenueDialogOpen, setIsRevenueDialogOpen] = useState(false);
@@ -42,43 +47,10 @@ export default function DashboardPage() {
   const [isLowStockDialogOpen, setIsLowStockDialogOpen] = useState(false);
   const [isOverdueDialogOpen, setIsOverdueDialogOpen] = useState(false);
 
-  useEffect(() => {
-    fetchDashboardData();
-  }, []);
-
-  const fetchDashboardData = async (bustCache = false) => {
-    setIsLoading(true);
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
-      
-      const url = bustCache ? "/api/dashboard?bustCache=true" : "/api/dashboard";
-      const response = await fetch(url, {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache',
-        },
-        signal: controller.signal,
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (response.ok) {
-        const data = await response.json();
-        setDashboardData(data.dashboard);
-      } else {
-        setDashboardData(null);
-      }
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        // Timeout error
-      } else {
-        // Fetch error
-      }
-      setDashboardData(null);
-    } finally {
-      setIsLoading(false);
-    }
+  const handleRefresh = async () => {
+    // Invalidate cache and refetch
+    await queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    refetch();
   };
 
   if (isLoading) {
@@ -99,7 +71,7 @@ export default function DashboardPage() {
             Please check your internet connection and try again
           </p>
         </div>
-        <Button onClick={fetchDashboardData} size="lg">
+        <Button onClick={handleRefresh} size="lg">
           <RefreshCw className="mr-2 h-4 w-4" />
           Retry
         </Button>
@@ -161,7 +133,7 @@ export default function DashboardPage() {
           <Button 
             variant="outline" 
             size="sm"
-            onClick={() => fetchDashboardData(true)}
+            onClick={handleRefresh}
             className="shrink-0"
           >
             <RefreshCw className="h-4 w-4 mr-2" />

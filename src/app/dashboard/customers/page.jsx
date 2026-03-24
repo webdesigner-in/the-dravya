@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,39 +40,38 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Pencil, Trash2, Users, Phone, Mail, MapPin } from "lucide-react";
-import { toast } from "sonner";
 import Link from "next/link";
 import PageHeader from "@/components/layout/PageHeader";
+import { useCustomers, useCreateCustomer, useUpdateCustomer, useDeleteCustomer } from "@/hooks/useCustomers";
 
 export default function CustomersPage() {
-  const user = useAuthStore((state) => state.user);
   const isAdmin = useAuthStore((state) => state.isAdmin());
-  const [customers, setCustomers] = useState([]);
-  const [allLoadedCustomers, setAllLoadedCustomers] = useState([]); // Cache all loaded customers
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false); // New: Loading more customers
-  const [hasMoreCustomers, setHasMoreCustomers] = useState(true); // New: Track if more customers available
-  const [customersLoaded, setCustomersLoaded] = useState(false);
+  
+  // React Query hooks with infinite scroll
+  const { 
+    data, 
+    isLoading, 
+    error,
+    fetchNextPage, 
+    hasNextPage, 
+    isFetchingNextPage 
+  } = useCustomers({ search: debouncedSearch });
+  const createCustomer = useCreateCustomer();
+  const updateCustomer = useUpdateCustomer();
+  const deleteCustomer = useDeleteCustomer();
+  
+  // Flatten all pages into single array
+  const customers = data?.pages?.flatMap(page => page.customers) || [];
+  
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [customerToDelete, setCustomerToDelete] = useState(null);
   const [editingCustomer, setEditingCustomer] = useState(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  // Pagination state (kept for API compatibility)
-  const [pagination, setPagination] = useState({
-    currentPage: 1,
-    totalPages: 1,
-    totalItems: 0,
-    itemsPerPage: 20,
-    hasMore: false,
-  });
 
   // Generate a unique fake phone number
   const generateFakePhone = () => {
-    // Generate a random 8-digit number and prefix with 00
     const randomDigits = Math.floor(10000000 + Math.random() * 90000000);
     return `00${randomDigits}`;
   };
@@ -93,61 +92,16 @@ export default function CustomersPage() {
     notes: "",
   });
 
-  const fetchCustomers = useCallback(async () => {
-    try {
-      setIsLoading(true);
-      const page = 1; // Always start from page 1 with infinite scroll
-      
-      let url = `/api/customers?page=${page}&limit=20`;
-      if (debouncedSearch) {
-        url += `&search=${encodeURIComponent(debouncedSearch)}`;
-      }
-      
-      const response = await fetch(url);
-      if (response.ok) {
-        const data = await response.json();
-        const customersData = data.customers || [];
-        
-        // Reset data for search or filter changes
-        setCustomers(customersData);
-        setAllLoadedCustomers(customersData);
-        
-        if (data.pagination) {
-          setPagination(data.pagination);
-          setHasMoreCustomers(data.pagination.hasMore);
-        }
-      }
-    } catch (error) {
-      toast.error("Failed to fetch customers");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [debouncedSearch]);
-
   // Debounce search input
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery);
-      setHasMoreCustomers(true); // Reset infinite scroll state
-    }, 500); // 500ms delay
+    }, 500);
 
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  useEffect(() => {
-    if (customersLoaded) {
-      fetchCustomers();
-    }
-  }, [fetchCustomers, customersLoaded]);
-
-  // Auto-load customers on mount
-  useEffect(() => {
-    if (!customersLoaded) {
-      setCustomersLoaded(true);
-    }
-  }, [customersLoaded]);
-
-  // Infinite scroll implementation for customers
+  // Infinite scroll implementation
   useEffect(() => {
     const handleScroll = () => {
       const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
@@ -156,56 +110,14 @@ export default function CustomersPage() {
       
       const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
       
-      if (isNearBottom && !isLoading && !isLoadingMore && hasMoreCustomers && customersLoaded && !debouncedSearch) {
-        loadMoreCustomers();
+      if (isNearBottom && !isLoading && !isFetchingNextPage && hasNextPage && !searchQuery) {
+        fetchNextPage();
       }
     };
 
-    let scrollTimeout;
-    const throttledScroll = () => {
-      clearTimeout(scrollTimeout);
-      scrollTimeout = setTimeout(handleScroll, 100);
-    };
-
-    window.addEventListener('scroll', throttledScroll);
-    return () => {
-      window.removeEventListener('scroll', throttledScroll);
-      clearTimeout(scrollTimeout);
-    };
-  }, [isLoading, isLoadingMore, hasMoreCustomers, customersLoaded, debouncedSearch]);
-
-  // Load more customers function
-  const loadMoreCustomers = async () => {
-    if (isLoadingMore || !hasMoreCustomers) return;
-    
-    setIsLoadingMore(true);
-    try {
-      const nextPage = Math.floor(allLoadedCustomers.length / 20) + 1;
-      const url = `/api/customers?page=${nextPage}&limit=20`;
-
-      const response = await fetch(url);
-      if (response.ok) {
-        const data = await response.json();
-        const newCustomers = data.customers || [];
-        
-        if (newCustomers.length === 0) {
-          setHasMoreCustomers(false);
-        } else {
-          setAllLoadedCustomers(prev => [...prev, ...newCustomers]);
-          setCustomers(prev => [...prev, ...newCustomers]);
-          
-          if (data.pagination) {
-            setPagination(data.pagination);
-            setHasMoreCustomers(data.pagination.hasMore);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load more customers:', error);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [isLoading, isFetchingNextPage, hasNextPage, searchQuery, fetchNextPage]);
 
   // Generate new phone number when dialog opens for new customer
   useEffect(() => {
@@ -261,7 +173,6 @@ export default function CustomersPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsSubmitting(true);
 
     try {
       const payload = {
@@ -282,35 +193,19 @@ export default function CustomersPage() {
         notes: formData.notes,
       };
 
-      const url = editingCustomer
-        ? `/api/customers/${editingCustomer._id}`
-        : "/api/customers";
-      const method = editingCustomer ? "PUT" : "POST";
-
-      const response = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to save customer");
+      if (editingCustomer) {
+        await updateCustomer.mutateAsync({
+          customerId: editingCustomer._id,
+          updates: payload,
+        });
+      } else {
+        await createCustomer.mutateAsync(payload);
       }
 
-      toast.success(
-        editingCustomer
-          ? "Customer updated successfully!"
-          : "Customer created successfully!"
-      );
       resetForm();
       setIsDialogOpen(false);
-      fetchCustomers();
     } catch (error) {
-      toast.error(error.message);
-    } finally {
-      setIsSubmitting(false);
+      // Error toast shown automatically by hook
     }
   };
 
@@ -323,20 +218,11 @@ export default function CustomersPage() {
     if (!customerToDelete) return;
 
     try {
-      const response = await fetch(`/api/customers/${customerToDelete._id}`, {
-        method: "DELETE",
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to delete customer");
-      }
-
-      toast.success("Customer deleted successfully!");
-      fetchCustomers();
+      await deleteCustomer.mutateAsync(customerToDelete._id);
+      setIsDeleteDialogOpen(false);
+      setCustomerToDelete(null);
     } catch (error) {
-      toast.error(error.message);
-    } finally {
+      // Error toast shown automatically by hook
       setIsDeleteDialogOpen(false);
       setCustomerToDelete(null);
     }
@@ -591,8 +477,11 @@ export default function CustomersPage() {
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting
+                <Button 
+                  type="submit" 
+                  disabled={createCustomer.isPending || updateCustomer.isPending}
+                >
+                  {createCustomer.isPending || updateCustomer.isPending
                     ? "Saving..."
                     : editingCustomer
                     ? "Update Customer"
@@ -615,9 +504,6 @@ export default function CustomersPage() {
                   <>
                     {customers.length} customer{customers.length !== 1 ? 's' : ''}
                     {searchQuery && ` matching "${searchQuery}"`}
-                    {hasMoreCustomers && !debouncedSearch && (
-                      <span className="text-muted-foreground"> • Scroll down to load more</span>
-                    )}
                   </>
                 ) : (
                   "Your customers will appear here"
@@ -628,21 +514,21 @@ export default function CustomersPage() {
               <Input
                 placeholder="Search customers..."
                 value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  if (!customersLoaded) {
-                    setCustomersLoaded(true);
-                  }
-                }}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full"
               />
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          {isLoading && customers.length === 0 ? (
+          {isLoading ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+            </div>
+          ) : error ? (
+            <div className="text-center py-8">
+              <p className="text-red-600">Failed to load customers</p>
+              <p className="text-sm text-muted-foreground mt-2">{error.message}</p>
             </div>
           ) : customers.length === 0 ? (
             <div className="text-center py-8">
@@ -657,103 +543,99 @@ export default function CustomersPage() {
               )}
             </div>
           ) : (
-            <>
-              <div className="space-y-4">
-                {customers.map((customer) => (
-                <Card key={customer._id} className="hover:shadow-md transition-shadow">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 space-y-2 min-w-0">
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                          <h3 className="text-base sm:text-lg font-semibold truncate">
-                            {customer.name}
-                          </h3>
-                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded capitalize w-fit">
-                            {customer.customerType}
-                          </span>
-                        </div>
+            <div className="space-y-4">
+              {customers.map((customer) => (
+              <Card key={customer._id} className="hover:shadow-md transition-shadow">
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 space-y-2 min-w-0">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <h3 className="text-base sm:text-lg font-semibold truncate">
+                          {customer.name}
+                        </h3>
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded capitalize w-fit">
+                          {customer.customerType}
+                        </span>
+                      </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Phone className="h-4 w-4 shrink-0" />
+                          <span className="truncate">{customer.phone}</span>
+                        </div>
+                        {customer.email && (
                           <div className="flex items-center gap-2 text-muted-foreground">
-                            <Phone className="h-4 w-4 shrink-0" />
-                            <span className="truncate">{customer.phone}</span>
+                            <Mail className="h-4 w-4 shrink-0" />
+                            <span className="truncate">{customer.email}</span>
                           </div>
-                          {customer.email && (
-                            <div className="flex items-center gap-2 text-muted-foreground">
-                              <Mail className="h-4 w-4 shrink-0" />
-                              <span className="truncate">{customer.email}</span>
-                            </div>
-                          )}
-                          {customer.address?.city && (
-                            <div className="flex items-center gap-2 text-muted-foreground">
-                              <MapPin className="h-4 w-4 shrink-0" />
-                              <span className="truncate">
-                                {customer.address.area}, {customer.address.city}
-                              </span>
-                            </div>
-                          )}
-                          {customer.creditLimit > 0 && (
-                            <div className="text-muted-foreground">
-                              Credit Limit: ₹{parseFloat(customer.creditLimit).toFixed(2)}
-                            </div>
-                          )}
+                        )}
+                        {customer.address?.city && (
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <MapPin className="h-4 w-4 shrink-0" />
+                            <span className="truncate">
+                              {customer.address.area}, {customer.address.city}
+                            </span>
+                          </div>
+                        )}
+                        {customer.creditLimit > 0 && (
+                          <div className="text-muted-foreground">
+                            Credit Limit: ₹{parseFloat(customer.creditLimit).toFixed(2)}
+                          </div>
+                        )}
+                      </div>
+
+                      {customer.outstandingBalance > 0 && (
+                        <div className="text-sm text-red-600">
+                          Outstanding: ₹{parseFloat(customer.outstandingBalance).toFixed(2)}
                         </div>
-
-                        {customer.outstandingBalance > 0 && (
-                          <div className="text-sm text-red-600">
-                            Outstanding: ₹{parseFloat(customer.outstandingBalance).toFixed(2)}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex flex-col sm:flex-row gap-1 shrink-0">
-                        <Link href={`/dashboard/orders?customer=${customer._id}`}>
-                          <Button variant="outline" size="sm" className="w-full sm:w-auto">
-                            Orders
-                          </Button>
-                        </Link>
-                        {isAdmin && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleEdit(customer)}
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => handleDeleteClick(customer)}
-                            >
-                              <Trash2 className="h-4 w-4 text-red-600" />
-                            </Button>
-                          </>
-                        )}
-                      </div>
+                      )}
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
+
+                    <div className="flex flex-col sm:flex-row gap-1 shrink-0">
+                      <Link href={`/dashboard/orders?customer=${customer._id}`}>
+                        <Button variant="outline" size="sm" className="w-full sm:w-auto">
+                          Orders
+                        </Button>
+                      </Link>
+                      {isAdmin && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleEdit(customer)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeleteClick(customer)}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+            
+            {/* Loading more indicator */}
+            {isFetchingNextPage && (
+              <div className="flex justify-center py-4">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+                <span className="ml-2 text-sm text-muted-foreground">Loading more customers...</span>
               </div>
-              
-              {/* Infinite Scroll Loading Indicator */}
-              {isLoadingMore && (
-                <div className="flex flex-col items-center justify-center py-6 gap-2">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
-                  <p className="text-sm text-muted-foreground">Loading more customers...</p>
-                </div>
-              )}
-              
-              {/* End of Results Indicator */}
-              {!hasMoreCustomers && customers.length > 0 && !debouncedSearch && (
-                <div className="text-center py-6">
-                  <p className="text-sm text-muted-foreground">
-                    You've reached the end of all customers
-                  </p>
-                </div>
-              )}
-            </>
+            )}
+            
+            {/* End of results indicator */}
+            {!hasNextPage && !searchQuery && customers.length > 0 && (
+              <div className="text-center py-4">
+                <p className="text-sm text-muted-foreground">No more customers to load</p>
+              </div>
+            )}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -777,8 +659,9 @@ export default function CustomersPage() {
             <AlertDialogAction
               onClick={handleDeleteConfirm}
               className="bg-red-600 hover:bg-red-700"
+              disabled={deleteCustomer.isPending}
             >
-              Delete
+              {deleteCustomer.isPending ? "Deleting..." : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

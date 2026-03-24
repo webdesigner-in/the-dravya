@@ -102,7 +102,7 @@ export async function PUT(request, { params }) {
       const updatedCustomer = await Customer.findByIdAndUpdate(
         id,
         { $set: body },
-        { new: true, runValidators: true, returnDocument: 'after' }
+        { runValidators: true, returnDocument: 'after' }
       ).populate('assignedDistributor', 'name email');
 
       if (!updatedCustomer) {
