@@ -29,6 +29,7 @@ import {
   SidebarMenuItem,
   SidebarHeader,
   SidebarFooter,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
@@ -82,6 +83,7 @@ export function AppSidebar() {
   const logout = useAuthStore((state) => state.logout);
   const router = useRouter();
   const sidebarContentRef = useRef(null);
+  const { isMobile, setOpenMobile } = useSidebar();
 
   // Save and restore sidebar scroll position
   useEffect(() => {
@@ -144,6 +146,13 @@ export function AppSidebar() {
     router.push("/login");
   };
 
+  // Close mobile sidebar when a link is clicked
+  const handleLinkClick = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  };
+
   return (
     <Sidebar>
       <SidebarHeader className="p-4 pb-3">
@@ -168,7 +177,7 @@ export function AppSidebar() {
                       asChild
                       isActive={pathname === item.url}
                     >
-                      <Link href={item.url} scroll={false}>
+                      <Link href={item.url} scroll={false} onClick={handleLinkClick}>
                         <item.icon />
                         <span>{item.title}</span>
                       </Link>
@@ -192,7 +201,7 @@ export function AppSidebar() {
                       asChild
                       isActive={pathname === item.url}
                     >
-                      <Link href={item.url} scroll={false}>
+                      <Link href={item.url} scroll={false} onClick={handleLinkClick}>
                         <item.icon />
                         <span>{item.title}</span>
                       </Link>
