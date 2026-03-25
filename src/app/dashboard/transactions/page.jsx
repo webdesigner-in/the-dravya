@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,6 +49,7 @@ import {
   Pencil,
   Trash2,
   Search,
+  Calendar,
 } from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
@@ -65,6 +66,22 @@ export default function TransactionsPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState("all");
+  
+  // Generate last 12 months options
+  const monthOptions = React.useMemo(() => {
+    const options = [{ value: "all", label: "All Time" }];
+    const now = new Date();
+    
+    for (let i = 0; i < 12; i++) {
+      const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const label = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      options.push({ value, label });
+    }
+    
+    return options;
+  }, []);
   
   // React Query hooks with infinite scroll
   const { 
@@ -76,7 +93,8 @@ export default function TransactionsPage() {
     isFetchingNextPage 
   } = useTransactions({ 
     type: typeFilter !== "all" ? typeFilter : undefined,
-    search: searchQuery || undefined
+    search: searchQuery || undefined,
+    month: selectedMonth
   });
   const createTransaction = useCreateTransaction();
   const updateTransaction = useUpdateTransaction();
@@ -229,19 +247,37 @@ export default function TransactionsPage() {
         description="Track income and expenses"
         backHref="/dashboard"
         actions={
-          <Dialog
-            open={isDialogOpen}
-            onOpenChange={(open) => {
-              setIsDialogOpen(open);
-              if (!open) resetForm();
-            }}
-          >
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Transaction
-              </Button>
-            </DialogTrigger>
+          <div className="flex items-center gap-3">
+            {/* Month Filter */}
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Select period" />
+                </SelectTrigger>
+                <SelectContent>
+                  {monthOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <Dialog
+              open={isDialogOpen}
+              onOpenChange={(open) => {
+                setIsDialogOpen(open);
+                if (!open) resetForm();
+              }}
+            >
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Transaction
+                </Button>
+              </DialogTrigger>
           <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editingTransaction ? 'Edit Transaction' : 'Add New Transaction'}</DialogTitle>
@@ -470,50 +506,66 @@ export default function TransactionsPage() {
               </DialogFooter>
             </form>
           </DialogContent>
-        </Dialog>
+          </Dialog>
+          </div>
         }
       />
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Income</CardTitle>
-            <ArrowUpCircle className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">
-              ₹{summary.totalIncome.toFixed(2)}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Expense</CardTitle>
-            <ArrowDownCircle className="h-4 w-4 text-red-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">
-              ₹{summary.totalExpense.toFixed(2)}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Net Profit</CardTitle>
-            <IndianRupee className="h-4 w-4" />
-          </CardHeader>
-          <CardContent>
-            <div
-              className={`text-2xl font-bold ${
-                summary.netProfit >= 0 ? "text-green-600" : "text-red-600"
-              }`}
-            >
-              ₹{summary.netProfit.toFixed(2)}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <Card>
+            <CardHeader className="pb-2 px-4 pt-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-xs font-medium text-muted-foreground">Total Income</CardTitle>
+                <ArrowUpCircle className="h-3.5 w-3.5 text-green-600" />
+              </div>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              <div className="text-xl font-bold text-green-600">
+                ₹{summary.totalIncome.toFixed(2)}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                {selectedMonth === "all" ? "All time" : monthOptions.find(m => m.value === selectedMonth)?.label}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2 px-4 pt-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-xs font-medium text-muted-foreground">Total Expense</CardTitle>
+                <ArrowDownCircle className="h-3.5 w-3.5 text-red-600" />
+              </div>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              <div className="text-xl font-bold text-red-600">
+                ₹{summary.totalExpense.toFixed(2)}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                {selectedMonth === "all" ? "All time" : monthOptions.find(m => m.value === selectedMonth)?.label}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2 px-4 pt-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-xs font-medium text-muted-foreground">Net Profit</CardTitle>
+                <IndianRupee className="h-3.5 w-3.5" />
+              </div>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              <div
+                className={`text-xl font-bold ${
+                  summary.netProfit >= 0 ? "text-green-600" : "text-red-600"
+                }`}
+              >
+                ₹{summary.netProfit.toFixed(2)}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                {selectedMonth === "all" ? "All time" : monthOptions.find(m => m.value === selectedMonth)?.label}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
 
       {/* Filters */}
       <Card>
@@ -562,7 +614,7 @@ export default function TransactionsPage() {
               </Select>
             </div>
             
-            {(searchQuery || typeFilter !== "all" || categoryFilter !== "all") && (
+            {(searchQuery || typeFilter !== "all" || categoryFilter !== "all" || selectedMonth !== "all") && (
               <Button
                 variant="outline"
                 size="sm"
@@ -570,6 +622,7 @@ export default function TransactionsPage() {
                   setSearchQuery("");
                   setTypeFilter("all");
                   setCategoryFilter("all");
+                  setSelectedMonth("all");
                 }}
                 className="w-full md:w-auto"
               >

@@ -27,6 +27,7 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page')) || 1;
     const limit = parseInt(searchParams.get('limit')) || 20;
+    const month = searchParams.get('month'); // Format: "YYYY-MM" or "all"
     const isAdmin = authUser.role === 'admin';
 
     // Use aggregation pipeline to fetch all data in ONE query (fixes N+1 problem)
@@ -35,6 +36,18 @@ export async function GET(request) {
     const matchStage = isAdmin 
       ? {} 
       : { createdBy: new mongoose.default.Types.ObjectId(authUser.userId) };
+
+    // Add date filter if month is specified
+    if (month && month !== 'all') {
+      const [year, monthNum] = month.split('-');
+      const startDate = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
+      const endDate = new Date(parseInt(year), parseInt(monthNum), 0, 23, 59, 59, 999);
+      
+      matchStage.createdAt = {
+        $gte: startDate,
+        $lte: endDate
+      };
+    }
 
     const ledgerData = await Order.aggregate([
       {

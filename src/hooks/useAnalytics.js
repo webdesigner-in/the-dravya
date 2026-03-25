@@ -34,12 +34,15 @@ export function useDashboard() {
 
 // Fetch customer ledger with infinite scroll
 export function useCustomerLedger(filters = {}) {
+  const { month } = filters;
+  
   return useInfiniteQuery({
     queryKey: ['customer-ledger', filters],
     queryFn: async ({ pageParam = 1 }) => {
       const queryParams = new URLSearchParams({
         page: pageParam.toString(),
         limit: '20',
+        ...(month && { month }),
       });
       
       const response = await fetch(`/api/reports/customer-ledger?${queryParams}`);

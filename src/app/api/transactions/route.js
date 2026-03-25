@@ -34,6 +34,7 @@ export async function GET(request) {
     const type = searchParams.get('type');
     const category = searchParams.get('category');
     const dateFilter = searchParams.get('date');
+    const month = searchParams.get('month'); // Format: "YYYY-MM" or "all"
     const search = searchParams.get('search');
     const page = parseInt(searchParams.get('page')) || 1;
     const limit = parseInt(searchParams.get('limit')) || 20;
@@ -42,8 +43,18 @@ export async function GET(request) {
     if (type) filter.type = type;
     if (category) filter.category = category;
 
-    // Date filters
-    if (dateFilter) {
+    // Month filter takes precedence over date filter
+    if (month && month !== 'all') {
+      const [year, monthNum] = month.split('-');
+      const startDate = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
+      const endDate = new Date(parseInt(year), parseInt(monthNum), 0, 23, 59, 59, 999);
+      
+      filter.date = {
+        $gte: startDate,
+        $lte: endDate
+      };
+    } else if (dateFilter) {
+      // Date filters (only if month filter is not set)
       const now = new Date();
       let startDate;
 

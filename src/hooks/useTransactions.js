@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 
 // Fetch transactions with infinite scroll
 export function useTransactions(filters = {}) {
-  const { search, type, customer } = filters;
+  const { search, type, customer, month } = filters;
   
   return useInfiniteQuery({
     queryKey: ['transactions', filters],
@@ -14,6 +14,7 @@ export function useTransactions(filters = {}) {
         ...(search && { search }),
         ...(type && { type }),
         ...(customer && { customer }),
+        ...(month && { month }),
       });
       
       const response = await fetch(`/api/transactions?${queryParams}`);
