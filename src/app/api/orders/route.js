@@ -10,6 +10,7 @@ import { getAuthUser } from '@/lib/auth';
 import { generateOrderNumber } from '@/lib/numberGenerator';
 import { errorResponse, parsePagination } from '@/lib/apiHelpers';
 import { createLogger } from '@/lib/logger';
+import { QUERY_LIMITS, QUERY_TIMEOUTS } from '@/lib/constants';
 
 // Configure route for production
 export const maxDuration = 30; // Maximum execution time in seconds
@@ -42,8 +43,20 @@ export async function GET(request) {
     // Build simple filter
     const filter = authUser.role === 'admin' ? {} : { createdBy: authUser.userId };
 
-    // Add simple filters
-    if (customerId) filter.customer = customerId;
+    // Add simple filters - handle "null" string and guest orders for customer filter
+    if (customerId) {
+      if (customerId === 'null' || customerId === 'undefined') {
+        // Filter for guest orders only
+        filter.orderType = 'guest';
+      } else if (customerId.startsWith('guest_')) {
+        // This is a guest order ID from customer ledger - extract the actual order ID
+        const guestOrderId = customerId.replace('guest_', '');
+        filter._id = guestOrderId;
+      } else {
+        // Regular customer ID
+        filter.customer = customerId;
+      }
+    }
     if (status) filter.status = status;
     if (paymentStatus) filter.paymentStatus = paymentStatus;
 
@@ -58,9 +71,9 @@ export async function GET(request) {
           ]
         })
         .select('_id')
-        .limit(50)
+        .limit(QUERY_LIMITS.SEARCH_RESULTS)
         .lean()
-        .maxTimeMS(3000);
+        .maxTimeMS(QUERY_TIMEOUTS.FAST);
         
         const customerIds = matchingCustomers.map(c => c._id);
         
@@ -98,8 +111,8 @@ export async function GET(request) {
         .skip(skip)
         .limit(limit)
         .lean()
-        .maxTimeMS(20000),
-      Order.countDocuments(filter).maxTimeMS(5000)
+        .maxTimeMS(QUERY_TIMEOUTS.COMPLEX),
+      Order.countDocuments(filter).maxTimeMS(QUERY_TIMEOUTS.NORMAL)
     ]);
 
     const totalPages = Math.ceil(totalOrders / limit);

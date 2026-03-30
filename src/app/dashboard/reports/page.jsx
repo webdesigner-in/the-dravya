@@ -63,6 +63,8 @@ export default function ReportsPage() {
   } = useCustomerLedger({ month: selectedMonth });
   
   // Fetch orders for expanded customer
+  // For guest customers, pass the guest order ID (which starts with "guest_")
+  // The Orders API will handle extracting the actual order ID
   const { 
     data: ordersData, 
     isLoading: isLoadingOrders 
@@ -149,7 +151,7 @@ export default function ReportsPage() {
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4 text-muted-foreground" />
             <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-45">
                 <SelectValue placeholder="Select period" />
               </SelectTrigger>
               <SelectContent>
@@ -299,9 +301,16 @@ export default function ReportsPage() {
                     <React.Fragment key={`${ledger.customer._id}-${index}`}>
                       <tr className="hover:bg-muted/50">
                         <td className="py-2.5 px-2">
-                          <div>
-                            <p className="font-medium text-xs">{ledger.customer.name}</p>
-                            <p className="text-[10px] text-muted-foreground">{ledger.customer.phone}</p>
+                          <div className="flex items-center gap-2">
+                            <div>
+                              <p className="font-medium text-xs">{ledger.customer.name}</p>
+                              <p className="text-[10px] text-muted-foreground">{ledger.customer.phone}</p>
+                            </div>
+                            {ledger.customer.isGuest && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700 shrink-0">
+                                Guest
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="py-2.5 px-2 text-center text-xs">{ledger.totalOrders}</td>

@@ -4,6 +4,7 @@ import Order from '@/models/Order';
 import Customer from '@/models/Customer';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
+import { QUERY_LIMITS, QUERY_TIMEOUTS } from '@/lib/constants';
 
 // Configure route for production
 export const maxDuration = 30; // Maximum execution time in seconds
@@ -26,7 +27,7 @@ export async function GET(request) {
 
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page')) || 1;
-    const limit = parseInt(searchParams.get('limit')) || 20;
+    const limit = parseInt(searchParams.get('limit')) || QUERY_LIMITS.DEFAULT_PAGE_SIZE;
     const month = searchParams.get('month'); // Format: "YYYY-MM" or "all"
     const isAdmin = authUser.role === 'admin';
 
@@ -51,17 +52,50 @@ export async function GET(request) {
 
     const ledgerData = await Order.aggregate([
       {
+        $match: matchStage
+        // Include ALL orders (both customer and guest orders)
+      },
+      {
+        $lookup: {
+          from: 'invoices',
+          localField: '_id',
+          foreignField: 'order',
+          as: 'invoice'
+        }
+      },
+      {
+        // Only include orders that have invoices
         $match: {
-          ...matchStage,
-          customer: { $exists: true, $ne: null } // Only include orders with customers
+          'invoice.0': { $exists: true }
+        }
+      },
+      {
+        $addFields: {
+          // Create a grouping key: use customer ID if exists, otherwise use order ID for guest
+          groupKey: {
+            $cond: {
+              if: { $and: [{ $ne: ['$customer', null] }, { $ne: ['$orderType', 'guest'] }] },
+              then: { $toString: '$customer' },
+              else: { $concat: ['guest_', { $toString: '$_id' }] }
+            }
+          },
+          isGuestOrder: { $eq: ['$orderType', 'guest'] },
+          // Get invoice amounts
+          invoiceTotalAmount: { $arrayElemAt: ['$invoice.totalAmount', 0] },
+          invoicePaidAmount: { $arrayElemAt: ['$invoice.paidAmount', 0] }
         }
       },
       {
         $group: {
-          _id: '$customer',
+          _id: '$groupKey',
+          isGuest: { $first: '$isGuestOrder' },
+          customerId: { $first: '$customer' },
+          guestOrderId: { $first: '$_id' },
+          guestName: { $first: '$guestInfo.name' },
+          guestPhone: { $first: '$guestInfo.phone' },
           totalOrders: { $sum: 1 },
-          totalAmount: { $sum: '$finalAmount' },
-          paidAmount: { $sum: '$paidAmount' },
+          totalAmount: { $sum: '$invoiceTotalAmount' }, // Sum invoice totals
+          paidAmount: { $sum: '$invoicePaidAmount' }, // Sum invoice payments
           deliveredUnpaidOrders: {
             $sum: {
               $cond: [
@@ -75,67 +109,61 @@ export async function GET(request) {
                 0
               ]
             }
-          },
-          deliveredTotal: {
-            $sum: {
-              $cond: [
-                {
-                  $and: [
-                    { $eq: ['$status', 'delivered'] },
-                    { $in: ['$paymentStatus', ['unpaid', 'partial']] }
-                  ]
-                },
-                '$finalAmount',
-                0
-              ]
-            }
-          },
-          deliveredPaid: {
-            $sum: {
-              $cond: [
-                {
-                  $and: [
-                    { $eq: ['$status', 'delivered'] },
-                    { $in: ['$paymentStatus', ['unpaid', 'partial']] }
-                  ]
-                },
-                '$paidAmount',
-                0
-              ]
-            }
           }
         }
       },
       {
         $lookup: {
           from: 'customers',
-          localField: '_id',
+          localField: 'customerId',
           foreignField: '_id',
           as: 'customerData'
         }
       },
       {
-        $unwind: '$customerData'
-      },
-      {
         $project: {
           customer: {
-            _id: '$customerData._id',
-            name: '$customerData.name',
-            phone: '$customerData.phone',
-            email: '$customerData.email'
+            $cond: {
+              if: '$isGuest',
+              then: {
+                _id: { $concat: ['guest_', { $toString: '$guestOrderId' }] },
+                name: { $ifNull: ['$guestName', 'Guest Customer'] },
+                phone: { $ifNull: ['$guestPhone', 'N/A'] },
+                email: null,
+                isGuest: true
+              },
+              else: {
+                $cond: {
+                  if: { $gt: [{ $size: '$customerData' }, 0] },
+                  then: {
+                    _id: { $arrayElemAt: ['$customerData._id', 0] },
+                    name: { $arrayElemAt: ['$customerData.name', 0] },
+                    phone: { $arrayElemAt: ['$customerData.phone', 0] },
+                    email: { $arrayElemAt: ['$customerData.email', 0] },
+                    isGuest: false
+                  },
+                  else: {
+                    _id: '$customerId',
+                    name: 'Unknown Customer',
+                    phone: 'N/A',
+                    email: null,
+                    isGuest: false
+                  }
+                }
+              }
+            }
           },
           totalOrders: 1,
           deliveredUnpaidOrders: 1,
           totalAmount: 1,
           paidAmount: 1,
-          dueAmount: { $subtract: ['$deliveredTotal', '$deliveredPaid'] }
+          dueAmount: { $subtract: ['$totalAmount', '$paidAmount'] }
         }
       },
       {
         $sort: { dueAmount: -1 }
       }
-    ], { maxTimeMS: 25000 }); // Add 25 second timeout as option
+    ], { maxTimeMS: QUERY_TIMEOUTS.AGGREGATION });
 
     const ledger = ledgerData;
     

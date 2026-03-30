@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
+import { checkRateLimit } from '@/lib/rateLimit';
 
 const PROTECTED_PATHS = ['/dashboard'];
 const AUTH_PATHS      = ['/login', '/register'];
@@ -21,6 +22,7 @@ async function verifyToken(token) {
 /**
  * Next.js 16+ Proxy (formerly Middleware).
  *
+ * • Rate limiting for API routes
  * • Unauthenticated requests to /dashboard/* → redirect to /login
  * • Expired / invalid JWT → clear the cookie and redirect to /login
  * • Already-authenticated users hitting /login or /register → redirect to /dashboard
@@ -28,6 +30,31 @@ async function verifyToken(token) {
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get('auth-token')?.value;
+
+  // ── Rate Limiting for API routes ──────────────────────────────────────────────────────────
+  if (pathname.startsWith('/api') && pathname !== '/api/health') {
+    const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 
+               request.headers.get('x-real-ip') || 
+               'unknown';
+    
+    // 100 requests per minute for general API endpoints
+    const rl = await checkRateLimit(`api:${ip}`, 100, 60_000);
+    
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { 
+          error: 'Too many requests. Please try again later.',
+          retryAfter: Math.ceil(rl.resetIn / 1000)
+        },
+        { 
+          status: 429,
+          headers: {
+            'Retry-After': String(Math.ceil(rl.resetIn / 1000))
+          }
+        }
+      );
+    }
+  }
 
   const isProtected = PROTECTED_PATHS.some(p => pathname.startsWith(p));
   const isAuthPage  = AUTH_PATHS.some(p => pathname.startsWith(p));
@@ -62,6 +89,6 @@ export async function proxy(request) {
 }
 
 export const config = {
-  // Run only on these paths — skip API routes, static assets, and image optimisation
-  matcher: ['/dashboard/:path*', '/login', '/register'],
+  // Run on dashboard, auth pages, and API routes
+  matcher: ['/dashboard/:path*', '/login', '/register', '/api/:path*'],
 };

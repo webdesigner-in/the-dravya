@@ -122,7 +122,9 @@ export async function PUT(request, { params }) {
                 update: { $inc: { stock: -i.quantity } },
               },
             }))
-          ).catch(() => {});
+          ).catch((rollbackError) => {
+            logger.error('Stock rollback failed during product validation', rollbackError);
+          });
           return NextResponse.json(
             { error: `Product not found: ${item.product}` },
             { status: 404 }
@@ -151,7 +153,9 @@ export async function PUT(request, { params }) {
               },
             })),
           ];
-          await Product.bulkWrite(rollbackOps).catch(() => {});
+          await Product.bulkWrite(rollbackOps).catch((rollbackError) => {
+            logger.error('Stock rollback failed during insufficient stock check', rollbackError);
+          });
           const current = await Product.findById(item.product).select('stock').lean();
           return NextResponse.json(
             { error: `Insufficient stock for ${product.name}. Available: ${current?.stock ?? 0}` },

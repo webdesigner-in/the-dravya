@@ -252,7 +252,7 @@ export default function TransactionsPage() {
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-muted-foreground" />
               <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-45">
                   <SelectValue placeholder="Select period" />
                 </SelectTrigger>
                 <SelectContent>

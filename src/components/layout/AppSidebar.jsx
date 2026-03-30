@@ -123,21 +123,15 @@ export function AppSidebar() {
 
     const savedScrollPosition = sessionStorage.getItem('sidebarScrollPosition');
     if (savedScrollPosition) {
-      // Use multiple methods to ensure scroll position is restored
       const scrollTop = parseInt(savedScrollPosition);
       
-      // Immediate attempt
-      sidebarContent.scrollTop = scrollTop;
-      
-      // Delayed attempt with requestAnimationFrame
+      // Use requestAnimationFrame to ensure DOM is ready
+      // This waits for the next paint cycle when the sidebar content is fully rendered
       requestAnimationFrame(() => {
-        sidebarContent.scrollTop = scrollTop;
+        if (sidebarContent) {
+          sidebarContent.scrollTop = scrollTop;
+        }
       });
-      
-      // Final attempt with setTimeout
-      setTimeout(() => {
-        sidebarContent.scrollTop = scrollTop;
-      }, 50);
     }
   }, [pathname]);
 

@@ -6,6 +6,7 @@ import Product from '@/models/Product';
 import Invoice from '@/models/Invoice';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
+import { QUERY_TIMEOUTS } from '@/lib/constants';
 
 // GET analytics data
 export const maxDuration = 30; // Maximum execution time
@@ -34,45 +35,27 @@ export async function GET(request) {
     await connectDB();
 
     const { searchParams } = new URL(request.url);
-    const range = searchParams.get('range') || 'month';
+    const month = searchParams.get('month') || 'all';
 
-    // Calculate date filter
-    let dateFilter = {};
-    const now = new Date();
+    // Calculate date filter based on month
+    let orderDateFilter = {};
+    let invoiceOrderDateFilter = {};
 
-    switch (range) {
-      case 'today':
-        dateFilter = {
-          createdAt: {
-            $gte: new Date(now.setHours(0, 0, 0, 0)),
-          },
-        };
-        break;
-      case 'week':
-        dateFilter = {
-          createdAt: {
-            $gte: new Date(now.setDate(now.getDate() - 7)),
-          },
-        };
-        break;
-      case 'month':
-        dateFilter = {
-          createdAt: {
-            $gte: new Date(now.setMonth(now.getMonth() - 1)),
-          },
-        };
-        break;
-      case 'year':
-        dateFilter = {
-          createdAt: {
-            $gte: new Date(now.setFullYear(now.getFullYear() - 1)),
-          },
-        };
-        break;
-      case 'all':
-      default:
-        dateFilter = {};
-        break;
+    if (month && month !== 'all') {
+      const [year, monthNum] = month.split('-');
+      const startDate = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
+      const endDate = new Date(parseInt(year), parseInt(monthNum), 0, 23, 59, 59, 999);
+      
+      // Filter orders by their creation date
+      orderDateFilter = {
+        createdAt: {
+          $gte: startDate,
+          $lte: endDate
+        }
+      };
+      
+      // For invoices, we need to filter by the order's creation date, not invoice creation date
+      // We'll handle this after fetching
     }
 
     // Fetch all necessary data with timeouts and lean queries
@@ -80,34 +63,42 @@ export async function GET(request) {
     let orders = [];
     let customers = [];
     let products = [];
-    let invoices = [];
+    let allInvoices = [];
+    let invoices = []; // Filtered invoices based on order date
 
     try {
       const results = await Promise.allSettled([
-        Order.find(dateFilter)
+        Order.find(orderDateFilter)
           .populate('customer', 'name')
           .populate('items.product', 'name size')
           .lean()
-          .maxTimeMS(8000),
+          .maxTimeMS(QUERY_TIMEOUTS.MODERATE),
         Customer.find({})
           .select('_id name')
           .lean()
-          .maxTimeMS(3000),
+          .maxTimeMS(QUERY_TIMEOUTS.FAST),
         Product.find({})
           .select('_id name size stock reorderLevel')
           .lean()
-          .maxTimeMS(3000),
-        Invoice.find(dateFilter)
-          .select('status dueDate')
+          .maxTimeMS(QUERY_TIMEOUTS.FAST),
+        // Fetch all invoices with their order reference
+        Invoice.find({})
+          .select('status dueDate paidAmount totalAmount order')
           .lean()
-          .maxTimeMS(3000),
+          .maxTimeMS(QUERY_TIMEOUTS.FAST),
       ]);
 
       // Extract results with fallbacks
       orders = results[0].status === 'fulfilled' ? results[0].value : [];
       customers = results[1].status === 'fulfilled' ? results[1].value : [];
       products = results[2].status === 'fulfilled' ? results[2].value : [];
-      invoices = results[3].status === 'fulfilled' ? results[3].value : [];
+      allInvoices = results[3].status === 'fulfilled' ? results[3].value : [];
+      
+      // Filter invoices to only include those whose orders are in the date range
+      const orderIds = new Set(orders.map(o => o._id.toString()));
+      invoices = allInvoices.filter(invoice => 
+        invoice.order && orderIds.has(invoice.order.toString())
+      );
 
       // Log any failures for debugging
       results.forEach((result, index) => {
@@ -121,9 +112,10 @@ export async function GET(request) {
       // Continue with empty arrays - analytics will show zeros
     }
 
-    // Revenue Metrics
-    const totalRevenue = orders.reduce((sum, order) => sum + (order.finalAmount || 0), 0);
-    const totalCollected = orders.reduce((sum, order) => sum + (order.paidAmount || 0), 0);
+    // Revenue Metrics - Calculate from Invoices only (proper accounting)
+    // Only count orders that have been invoiced
+    const totalRevenue = invoices.reduce((sum, invoice) => sum + (invoice.totalAmount || 0), 0);
+    const totalCollected = invoices.reduce((sum, invoice) => sum + (invoice.paidAmount || 0), 0);
     const totalOutstanding = totalRevenue - totalCollected;
     const collectionRate = totalRevenue > 0 ? (totalCollected / totalRevenue) * 100 : 0;
     const averageOrderValue = orders.length > 0 ? totalRevenue / orders.length : 0;
@@ -271,7 +263,7 @@ export async function GET(request) {
     return NextResponse.json({
       success: true,
       analytics,
-      range,
+      month,
     });
   } catch (error) {
     const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to fetch analytics data');

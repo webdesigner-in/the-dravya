@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
+import { DEBOUNCE_DELAYS } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -65,12 +66,16 @@ export default function OrdersPage() {
   const queryClient = useQueryClient();
   
   // Filters - MUST be declared BEFORE useOrders hook
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchInput, setSearchInput] = useState(""); // User input
+  const [searchQuery, setSearchQuery] = useState(""); // Debounced value for API
   const [statusFilter, setStatusFilter] = useState("all");
   const [paymentFilter, setPaymentFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState("all");
   const [sortBy, setSortBy] = useState("date");
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
+  
+  // Refs for debouncing
+  const searchDebounceRef = useRef(null);
   
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
@@ -96,6 +101,23 @@ export default function OrdersPage() {
     notes: "",
     deliveryDate: "",
   });
+  
+  // Debounce search input
+  useEffect(() => {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+    
+    searchDebounceRef.current = setTimeout(() => {
+      setSearchQuery(searchInput);
+    }, DEBOUNCE_DELAYS.SEARCH);
+    
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, [searchInput]);
   
   // React Query hooks with infinite scroll
   const { 
@@ -182,9 +204,13 @@ export default function OrdersPage() {
             setSelectedCustomerName(customer.name);
           }
         }
+      } else {
+        console.error('Failed to fetch customers:', response.status);
+        toast.error('Failed to load customers');
       }
     } catch (error) {
-      // Silent error
+      console.error('Error fetching customers:', error);
+      toast.error('Error loading customers');
     }
   }, [customerIdFromUrl]);
 
@@ -195,9 +221,13 @@ export default function OrdersPage() {
         const data = await response.json();
         const activeProducts = (data.products || []).filter(p => p.stock > 0);
         setProducts(activeProducts);
+      } else {
+        console.error('Failed to fetch products:', response.status);
+        toast.error('Failed to load products');
       }
     } catch (error) {
-      // Silent error
+      console.error('Error fetching products:', error);
+      toast.error('Error loading products');
     }
   }, []);
 
@@ -299,6 +329,7 @@ export default function OrdersPage() {
       return;
     }
     
+    setSearchInput("");
     setSearchQuery("");
     setStatusFilter("all");
     setPaymentFilter("all");
@@ -1193,8 +1224,8 @@ export default function OrdersPage() {
             <div className="sm:col-span-2 lg:col-span-2">
               <Input
                 placeholder="Search by order number, customer..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 onKeyPress={(e) => e.key === "Enter" && handleSearch()}
                 className="text-sm h-10"
               />

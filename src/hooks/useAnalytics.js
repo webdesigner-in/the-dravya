@@ -1,11 +1,14 @@
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 
 // Fetch analytics data
-export function useAnalytics(timeRange = '7d') {
+export function useAnalytics(month = 'all') {
   return useQuery({
-    queryKey: ['analytics', timeRange],
+    queryKey: ['analytics', month],
     queryFn: async () => {
-      const response = await fetch(`/api/analytics?range=${timeRange}`);
+      const queryParams = new URLSearchParams({
+        ...(month && { month }),
+      });
+      const response = await fetch(`/api/analytics?${queryParams}`);
       if (!response.ok) {
         throw new Error('Failed to fetch analytics');
       }

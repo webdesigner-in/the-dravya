@@ -24,7 +24,14 @@ export async function fetchWithTimeout(url, options = {}, timeout = 30000) {
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      const data = await response.json().catch(() => ({}));
+      let data = {};
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        console.error('Failed to parse error response:', parseError);
+        // Continue with empty data object
+      }
+      
       throw new ApiError(
         data.error || `Request failed with status ${response.status}`,
         response.status,

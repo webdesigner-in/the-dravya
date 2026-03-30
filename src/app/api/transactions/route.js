@@ -3,9 +3,11 @@ import connectDB from '@/lib/mongodb';
 import Transaction from '@/models/Transaction';
 import Customer from '@/models/Customer';
 import Order from '@/models/Order';
+import Invoice from '@/models/Invoice';
 import { getAuthUser } from '@/lib/auth';
 import { generateTransactionNumber } from '@/lib/numberGenerator';
 import { handleApiError } from '@/lib/errorHandler';
+import { QUERY_LIMITS, QUERY_TIMEOUTS } from '@/lib/constants';
 
 // GET all transactions
 export async function GET(request) {
@@ -37,7 +39,7 @@ export async function GET(request) {
     const month = searchParams.get('month'); // Format: "YYYY-MM" or "all"
     const search = searchParams.get('search');
     const page = parseInt(searchParams.get('page')) || 1;
-    const limit = parseInt(searchParams.get('limit')) || 20;
+    const limit = parseInt(searchParams.get('limit')) || QUERY_LIMITS.DEFAULT_PAGE_SIZE;
 
     const filter = {};
     if (type) filter.type = type;
@@ -82,9 +84,9 @@ export async function GET(request) {
       const s = search.trim();
       const [matchingCustomers, matchingOrders] = await Promise.all([
         Customer.find({ name: { $regex: s, $options: 'i' } })
-          .select('_id').lean().limit(50).maxTimeMS(3000),
+          .select('_id').lean().limit(QUERY_LIMITS.SEARCH_RESULTS).maxTimeMS(QUERY_TIMEOUTS.FAST),
         Order.find({ orderNumber: { $regex: `^${s}`, $options: 'i' } })
-          .select('_id').lean().limit(50).maxTimeMS(3000),
+          .select('_id').lean().limit(QUERY_LIMITS.SEARCH_RESULTS).maxTimeMS(QUERY_TIMEOUTS.FAST),
       ]);
 
       const orClauses = [
@@ -99,8 +101,9 @@ export async function GET(request) {
 
     const skip = (page - 1) * limit;
 
-    // Run paginated fetch + total count + income/expense aggregation in parallel
-    const [transactions, totalTransactions, totals] = await Promise.all([
+    // Run paginated fetch + total count in parallel
+    // Calculate income from Invoices based on ORDER creation date (not invoice creation date)
+    const [transactions, totalTransactions, invoiceTotals] = await Promise.all([
       Transaction.find(filter)
         .populate('customer', 'name phone')
         .populate('order', 'orderNumber orderType guestInfo')
@@ -109,22 +112,58 @@ export async function GET(request) {
         .skip(skip)
         .limit(limit)
         .lean()
-        .maxTimeMS(10000),
-      Transaction.countDocuments(filter).maxTimeMS(5000),
-      Transaction.aggregate([
-        { $match: filter },
+        .maxTimeMS(QUERY_TIMEOUTS.SLOW),
+      Transaction.countDocuments(filter).maxTimeMS(QUERY_TIMEOUTS.NORMAL),
+      // Calculate income from Invoices - filter by ORDER creation date, not invoice creation date
+      Invoice.aggregate([
+        {
+          $lookup: {
+            from: 'orders',
+            localField: 'order',
+            foreignField: '_id',
+            as: 'orderData'
+          }
+        },
+        {
+          $addFields: {
+            orderCreatedAt: { $arrayElemAt: ['$orderData.createdAt', 0] }
+          }
+        },
+        ...(month && month !== 'all' ? [{
+          $match: {
+            orderCreatedAt: {
+              $gte: new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]) - 1, 1),
+              $lte: new Date(parseInt(month.split('-')[0]), parseInt(month.split('-')[1]), 0, 23, 59, 59, 999)
+            }
+          }
+        }] : []),
         {
           $group: {
             _id: null,
-            totalIncome:  { $sum: { $cond: [{ $eq: ['$type', 'income']  }, '$amount', 0] } },
-            totalExpense: { $sum: { $cond: [{ $eq: ['$type', 'expense'] }, '$amount', 0] } },
+            totalIncome: { $sum: '$paidAmount' },
           },
         },
-      ]).option({ maxTimeMS: 5000 }),
+      ]).option({ maxTimeMS: QUERY_TIMEOUTS.NORMAL }),
     ]);
 
-    const totalIncome  = totals[0]?.totalIncome  ?? 0;
-    const totalExpense = totals[0]?.totalExpense ?? 0;
+    // Get expense total from Transactions (expenses are only in transactions)
+    const expenseTotals = await Transaction.aggregate([
+      { 
+        $match: { 
+          ...filter,
+          type: 'expense'
+        } 
+      },
+      {
+        $group: {
+          _id: null,
+          totalExpense: { $sum: '$amount' },
+        },
+      },
+    ]).option({ maxTimeMS: QUERY_TIMEOUTS.NORMAL });
+
+    const totalIncome  = invoiceTotals[0]?.totalIncome ?? 0;
+    const totalExpense = expenseTotals[0]?.totalExpense ?? 0;
     const totalPages   = Math.ceil(totalTransactions / limit);
 
     return NextResponse.json({

@@ -7,6 +7,7 @@ import Invoice from '@/models/Invoice';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
 import cache, { CACHE_TTL } from '@/lib/cache';
+import { QUERY_LIMITS, QUERY_TIMEOUTS } from '@/lib/constants';
 
 // GET dashboard data
 export const maxDuration = 30; // Maximum execution time
@@ -72,49 +73,49 @@ export async function GET(request) {
       })
         .select('orderNumber customer orderType guestInfo finalAmount status createdAt')
         .populate('customer', 'name')
-        .limit(50)
+        .limit(QUERY_LIMITS.SEARCH_RESULTS)
         .lean()
-        .maxTimeMS(5000),
+        .maxTimeMS(QUERY_TIMEOUTS.NORMAL),
       
-      // Pending orders - limited to 20
+      // Pending orders
       Order.find({
         ...orderFilter,
         status: { $in: ['pending', 'confirmed', 'processing'] }
       })
         .select('orderNumber customer orderType guestInfo finalAmount status createdAt')
         .populate('customer', 'name')
-        .limit(20)
+        .limit(QUERY_LIMITS.DASHBOARD_PENDING)
         .sort({ createdAt: -1 })
         .lean()
-        .maxTimeMS(5000),
+        .maxTimeMS(QUERY_TIMEOUTS.NORMAL),
       
-      // Recent deliveries - limited to 10
+      // Recent deliveries
       Order.find({
         ...orderFilter,
         status: 'delivered'
       })
         .select('orderNumber customer orderType guestInfo finalAmount updatedAt')
         .populate('customer', 'name')
-        .limit(10)
+        .limit(QUERY_LIMITS.DASHBOARD_RECENT)
         .sort({ updatedAt: -1 })
         .lean()
-        .maxTimeMS(5000),
+        .maxTimeMS(QUERY_TIMEOUTS.NORMAL),
       
       // Customer count only
-      Customer.countDocuments({}).maxTimeMS(3000),
+      Customer.countDocuments({}).maxTimeMS(QUERY_TIMEOUTS.FAST),
       
-      // Low stock products - limited to 10
+      // Low stock products
       Product.find({
         $expr: { $lte: ['$stock', '$minStockLevel'] },
         stock: { $gt: 0 }
       })
         .select('name size stock minStockLevel')
-        .limit(10)
+        .limit(QUERY_LIMITS.DASHBOARD_RECENT)
         .sort({ stock: 1 })
         .lean()
-        .maxTimeMS(3000),
+        .maxTimeMS(QUERY_TIMEOUTS.FAST),
       
-      // Overdue invoices - limited to 20
+      // Overdue invoices
       Invoice.find({
         status: { $in: ['sent', 'partial'] },
         dueDate: { $lt: new Date() },
@@ -126,9 +127,9 @@ export async function GET(request) {
           select: 'orderNumber customer orderType guestInfo createdBy',
           populate: { path: 'customer', select: 'name' }
         })
-        .limit(20)
+        .limit(QUERY_LIMITS.DASHBOARD_OVERDUE)
         .lean()
-        .maxTimeMS(5000)
+        .maxTimeMS(QUERY_TIMEOUTS.NORMAL)
     ]);
 
     // Filter overdue invoices by user's orders (for non-admin)
