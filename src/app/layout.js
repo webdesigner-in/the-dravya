@@ -1,4 +1,4 @@
-import { Patrick_Hand } from "next/font/google"
+import localFont from "next/font/local"
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/components/providers/AuthProvider";
@@ -7,11 +7,13 @@ import { Toaster } from "@/components/ui/sonner";
 import ErrorBoundary from "@/components/ErrorBoundary";
 
 
-const patrickHand = Patrick_Hand({
-  subsets: ['latin'],
-  weight: ['400'],
+const bauhausFont = localFont({
+  src: '../assets/font/BauhausStd-Medium.ttf',
   display: 'swap',
-  variable: '--font-patrick-hand',
+  variable: '--font-bauhaus',
+  preload: true,
+  fallback: ['system-ui', 'arial'],
+  adjustFontFallback: 'Arial',
 });
 
 
@@ -22,9 +24,9 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className={patrickHand.variable}>
+    <html lang="en" className={bauhausFont.variable}>
       
-      <body className={patrickHand.className}>
+      <body className={bauhausFont.className}>
        <ErrorBoundary>
          <QueryProvider>
            <AuthProvider>
