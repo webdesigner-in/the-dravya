@@ -48,11 +48,12 @@ export async function GET(request) {
       }
     }
 
-    // Get dates - Use UTC to avoid timezone issues
+    // Get dates - Use local timezone to match user's perspective
     const now = new Date();
-    // Get start of today in UTC
-    const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
-    const startOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
+    // Get start of today in local timezone
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
 
     // Filter orders by the logged-in user (createdBy) - Admin sees all orders
     const orderFilter = authUser.role === 'admin' ? {} : { createdBy: authUser.userId };
@@ -64,16 +65,21 @@ export async function GET(request) {
       recentDeliveries,
       customers,
       lowStockProducts,
-      overdueInvoices
+      overdueInvoices,
+      creditLimitWarnings
     ] = await Promise.all([
-      // Today's orders - limited to 50
+      // Today's orders - orders scheduled for delivery today
       Order.find({
         ...orderFilter,
-        createdAt: { $gte: startOfToday }
+        deliveryDate: { 
+          $gte: startOfToday,
+          $lte: endOfToday
+        }
       })
-        .select('orderNumber customer orderType guestInfo finalAmount status createdAt')
+        .select('orderNumber customer orderType guestInfo finalAmount status deliveryDate createdAt')
         .populate('customer', 'name')
         .limit(QUERY_LIMITS.SEARCH_RESULTS)
+        .sort({ deliveryDate: 1 }) // Sort by delivery time
         .lean()
         .maxTimeMS(QUERY_TIMEOUTS.NORMAL),
       
@@ -129,7 +135,17 @@ export async function GET(request) {
         })
         .limit(QUERY_LIMITS.DASHBOARD_OVERDUE)
         .lean()
-        .maxTimeMS(QUERY_TIMEOUTS.NORMAL)
+        .maxTimeMS(QUERY_TIMEOUTS.NORMAL),
+      
+      // Customers near credit limit (70% or more utilized)
+      Customer.find({
+        creditLimit: { $gt: 0 },
+      })
+        .select('name creditLimit')
+        .limit(50) // Get more to calculate from
+        .sort({ creditLimit: -1 })
+        .lean()
+        .maxTimeMS(QUERY_TIMEOUTS.FAST)
     ]);
 
     // Filter overdue invoices by user's orders (for non-admin)
@@ -198,6 +214,35 @@ export async function GET(request) {
 
     const overdueAmount = filteredOverdueInvoices.reduce((sum, inv) => sum + (inv.balanceAmount || 0), 0);
 
+    // Calculate actual outstanding balance for customers with credit limits
+    const customersWithActualBalance = await Promise.all(
+      creditLimitWarnings.map(async (customer) => {
+        const orders = await Order.find({
+          customer: customer._id,
+          status: 'delivered',
+        })
+          .select('finalAmount paidAmount')
+          .lean();
+        
+        const actualOutstanding = orders.reduce((sum, order) => {
+          const due = parseFloat(order.finalAmount || 0) - parseFloat(order.paidAmount || 0);
+          return sum + due;
+        }, 0);
+        
+        return {
+          ...customer,
+          outstandingBalance: actualOutstanding,
+          utilization: (actualOutstanding / customer.creditLimit) * 100,
+        };
+      })
+    );
+
+    // Filter to only show customers with 70%+ utilization
+    const filteredCreditWarnings = customersWithActualBalance
+      .filter(c => c.utilization >= 70)
+      .sort((a, b) => b.utilization - a.utilization)
+      .slice(0, 10);
+
     // Get total stock count (aggregation is faster)
     const stockStats = await Product.aggregate([
       { $group: { _id: null, totalStock: { $sum: '$stock' } } }
@@ -255,6 +300,13 @@ export async function GET(request) {
         },
         finalAmount: order.finalAmount,
         updatedAt: order.updatedAt,
+      })),
+      creditLimitWarnings: filteredCreditWarnings.map((customer) => ({
+        _id: customer._id,
+        name: customer.name,
+        limit: customer.creditLimit,
+        outstanding: customer.outstandingBalance,
+        utilization: customer.utilization,
       })),
     };
 

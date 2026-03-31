@@ -67,6 +67,7 @@ export default function TransactionsPage() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMonth, setSelectedMonth] = useState("all");
+  const [selectedCustomerForOrders, setSelectedCustomerForOrders] = useState("");
   
   // Generate last 12 months options
   const monthOptions = React.useMemo(() => {
@@ -102,7 +103,9 @@ export default function TransactionsPage() {
   
   // Fetch customers and orders for dropdowns
   const { data: customersData } = useCustomers({});
-  const { data: ordersData } = useOrders({});
+  const { data: ordersData } = useOrders({ 
+    customer: selectedCustomerForOrders || undefined 
+  });
   
   // Flatten all pages
   const transactions = data?.pages?.flatMap(page => page.transactions) || [];
@@ -170,11 +173,13 @@ export default function TransactionsPage() {
       date: new Date().toISOString().split("T")[0],
       notes: "",
     });
+    setSelectedCustomerForOrders("");
     setEditingTransaction(null);
   };
 
   const handleEdit = (transaction) => {
     setEditingTransaction(transaction);
+    const customerId = transaction.customer?._id || "";
     setFormData({
       type: transaction.type,
       category: transaction.category,
@@ -182,12 +187,13 @@ export default function TransactionsPage() {
       paymentMethod: transaction.paymentMethod,
       paymentStatus: transaction.paymentStatus,
       order: transaction.order?._id || "",
-      customer: transaction.customer?._id || "",
+      customer: customerId,
       description: transaction.description,
       reference: transaction.reference || "",
       date: new Date(transaction.date).toISOString().split("T")[0],
       notes: transaction.notes || "",
     });
+    setSelectedCustomerForOrders(customerId);
     setIsDialogOpen(true);
   };
 
@@ -404,9 +410,10 @@ export default function TransactionsPage() {
                       <Label htmlFor="customer" className="text-sm">Customer</Label>
                       <Select
                         value={formData.customer}
-                        onValueChange={(value) =>
-                          setFormData({ ...formData, customer: value })
-                        }
+                        onValueChange={(value) => {
+                          setFormData({ ...formData, customer: value, order: "" });
+                          setSelectedCustomerForOrders(value);
+                        }}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select customer" />
@@ -427,9 +434,10 @@ export default function TransactionsPage() {
                         onValueChange={(value) =>
                           setFormData({ ...formData, order: value })
                         }
+                        disabled={!formData.customer}
                       >
                         <SelectTrigger>
-                          <SelectValue placeholder="Select order" />
+                          <SelectValue placeholder={formData.customer ? "Select order" : "Select customer first"} />
                         </SelectTrigger>
                         <SelectContent>
                           {orders.filter(o => o._id).map((order) => (

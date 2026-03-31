@@ -69,6 +69,9 @@ export const useAuthStore = create(
             tokenExpiry
           });
           
+          // Fetch fresh user data to ensure all fields are loaded
+          await get().fetchUser();
+          
           return { success: true, user: data.user };
         } catch (error) {
           set({ isLoading: false });
@@ -186,7 +189,7 @@ export const useAuthStore = create(
             tokenExpiry
           });
         } catch (error) {
-          // Network error or other issues - clear auth state
+          // Network error - clear auth state
           set({ 
             user: null, 
             isLoading: false, 
@@ -204,7 +207,8 @@ export const useAuthStore = create(
       updateUser: (updates) => {
         const currentUser = get().user;
         if (currentUser) {
-          set({ user: { ...currentUser, ...updates } });
+          const updatedUser = { ...currentUser, ...updates };
+          set({ user: updatedUser });
         }
       },
       

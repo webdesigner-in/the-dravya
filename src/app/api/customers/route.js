@@ -81,9 +81,34 @@ export async function GET(request) {
       Customer.countDocuments(filter)
     ]);
 
+    // Calculate actual outstanding balance from orders for each customer
+    const Order = (await import('@/models/Order')).default;
+    
+    const customersWithBalance = await Promise.all(
+      customers.map(async (customer) => {
+        // Calculate outstanding balance from delivered orders
+        const orders = await Order.find({
+          customer: customer._id,
+          status: 'delivered',
+        })
+          .select('finalAmount paidAmount')
+          .lean();
+        
+        const actualOutstanding = orders.reduce((sum, order) => {
+          const due = parseFloat(order.finalAmount || 0) - parseFloat(order.paidAmount || 0);
+          return sum + due;
+        }, 0);
+        
+        return {
+          ...customer,
+          outstandingBalance: actualOutstanding,
+        };
+      })
+    );
+
     // logger.info(`Fetched ${customers.length} customers`, { userId: authUser.userId, page, limit });
 
-    const response = buildPaginationResponse(customers, totalCustomers, page, limit);
+    const response = buildPaginationResponse(customersWithBalance, totalCustomers, page, limit);
     
     const responseData = {
       success: true,

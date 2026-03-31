@@ -577,16 +577,51 @@ export default function CustomersPage() {
                             </span>
                           </div>
                         )}
-                        {customer.creditLimit > 0 && (
-                          <div className="text-muted-foreground">
-                            Credit Limit: ₹{parseFloat(customer.creditLimit).toFixed(2)}
-                          </div>
-                        )}
                       </div>
 
-                      {customer.outstandingBalance > 0 && (
-                        <div className="text-sm text-red-600">
-                          Outstanding: ₹{parseFloat(customer.outstandingBalance).toFixed(2)}
+                      {/* Credit Limit Section - Always show if admin */}
+                      {isAdmin && (
+                        <div className="mt-2 pt-2 border-t">
+                          {customer.creditLimit > 0 ? (
+                            <div>
+                              <div className="flex items-center justify-between text-xs mb-1">
+                                <span className="text-muted-foreground">Credit Utilization</span>
+                                <span className={`font-medium ${
+                                  customer.outstandingBalance / customer.creditLimit >= 0.9 ? 'text-red-600' :
+                                  customer.outstandingBalance / customer.creditLimit >= 0.7 ? 'text-orange-600' :
+                                  'text-green-600'
+                                }`}>
+                                  ₹{parseFloat(customer.outstandingBalance || 0).toFixed(0)} / ₹{parseFloat(customer.creditLimit).toFixed(0)}
+                                </span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div
+                                  className={`h-2 rounded-full transition-all ${
+                                    customer.outstandingBalance / customer.creditLimit >= 0.9 ? 'bg-red-600' :
+                                    customer.outstandingBalance / customer.creditLimit >= 0.7 ? 'bg-orange-500' :
+                                    'bg-green-500'
+                                  }`}
+                                  style={{
+                                    width: `${Math.min((customer.outstandingBalance / customer.creditLimit) * 100, 100)}%`
+                                  }}
+                                ></div>
+                              </div>
+                              {customer.outstandingBalance / customer.creditLimit >= 0.9 && (
+                                <p className="text-xs text-red-600 mt-1">⚠️ Credit limit almost reached!</p>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-muted-foreground">
+                              {customer.outstandingBalance > 0 ? (
+                                <div>
+                                  <span className="text-orange-600 font-medium">Outstanding: ₹{parseFloat(customer.outstandingBalance).toFixed(2)}</span>
+                                  <span className="ml-2">• No credit limit set</span>
+                                </div>
+                              ) : (
+                                <span>No credit limit set</span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
+import mongoose from 'mongoose';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
 
@@ -18,7 +18,13 @@ export async function GET() {
 
     await connectDB();
 
-    const user = await User.findById(authUser.userId);
+    const User = (await import('@/models/User')).default;
+
+    // Use lean() to get plain object and bypass any Mongoose getters/virtuals
+    const user = await User.findById(authUser.userId)
+      .select('-password')
+      .lean({ virtuals: false, getters: false })
+      .exec();
 
     if (!user) {
       return NextResponse.json(
@@ -34,8 +40,10 @@ export async function GET() {
         name: user.name,
         email: user.email,
         role: user.role,
-        phone: user.phone,
-        address: user.address,
+        phone: user.phone || '',
+        address: user.address || '',
+        upiId: user.upiId || '',
+        businessName: user.businessName || '',
       },
     });
   } catch (error) {

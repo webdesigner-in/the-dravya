@@ -58,11 +58,13 @@ import { Badge } from "@/components/ui/badge";
 import { getUserFriendlyError } from "@/lib/errorMessages";
 import { useOrders, useCreateOrder, useUpdateOrder, useDeleteOrder } from "@/hooks/useOrders";
 import { useQueryClient } from '@tanstack/react-query';
+import { generateUPIString, generateUPIQRCode } from "@/lib/upi";
 
 export default function OrdersPage() {
   const searchParams = useSearchParams();
   const customerIdFromUrl = searchParams.get("customer");
   const isAdmin = useAuthStore((state) => state.isAdmin());
+  const user = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
   
   // Filters - MUST be declared BEFORE useOrders hook
@@ -93,6 +95,7 @@ export default function OrdersPage() {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [paymentNotes, setPaymentNotes] = useState("");
+  const [transactionId, setTransactionId] = useState("");
   const [isMounted, setIsMounted] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [selectedCustomerName, setSelectedCustomerName] = useState("");
@@ -504,6 +507,46 @@ export default function OrdersPage() {
     setIsSubmitting(true);
 
     try {
+      // Credit limit validation for customer orders with credit payment terms
+      if (formData.orderType === "customer" && formData.customer) {
+        const selectedCustomer = customers.find(c => c._id === formData.customer);
+        
+        if (selectedCustomer && selectedCustomer.creditLimit > 0) {
+          // Calculate order total
+          const orderTotal = formData.items.reduce((sum, item) => {
+            const product = products.find(p => p._id === item.product);
+            const price = item.customPrice ? parseFloat(item.customPrice) : (product?.price || 0);
+            return sum + (price * item.quantity);
+          }, 0);
+          
+          const discount = parseFloat(formData.discount || 0);
+          const tax = parseFloat(formData.tax || 0);
+          const finalAmount = orderTotal - discount + tax;
+          
+          // Check if this order will exceed credit limit
+          const currentOutstanding = parseFloat(selectedCustomer.outstandingBalance || 0);
+          const newOutstanding = currentOutstanding + finalAmount;
+          
+          if (newOutstanding > selectedCustomer.creditLimit) {
+            const available = selectedCustomer.creditLimit - currentOutstanding;
+            toast.error(
+              `Credit limit exceeded! Customer has ₹${available.toFixed(2)} available credit. Order amount: ₹${finalAmount.toFixed(2)}`,
+              { duration: 5000 }
+            );
+            setIsSubmitting(false);
+            return;
+          }
+          
+          // Warning if close to limit (90%)
+          if (newOutstanding / selectedCustomer.creditLimit >= 0.9) {
+            toast.warning(
+              `Warning: This order will use ${((newOutstanding / selectedCustomer.creditLimit) * 100).toFixed(0)}% of customer's credit limit`,
+              { duration: 4000 }
+            );
+          }
+        }
+      }
+      
       await createOrder.mutateAsync(formData);
       resetForm();
       setIsDialogOpen(false);
@@ -1514,6 +1557,7 @@ export default function OrdersPage() {
                                   setPaymentAmount("");
                                   setPaymentMethod("cash");
                                   setPaymentNotes("");
+                                  setTransactionId("");
                                   setIsRecordPaymentDialogOpen(true);
                                 }}
                                 className="text-xs h-8 border-green-500 text-green-600 hover:bg-green-50"
@@ -2273,7 +2317,10 @@ export default function OrdersPage() {
                     body: JSON.stringify({
                       amount,
                       paymentMethod,
-                      notes: paymentNotes,
+                      notes: paymentMethod === "upi" && transactionId 
+                        ? `${paymentNotes ? paymentNotes + " | " : ""}UPI Transaction ID: ${transactionId}`
+                        : paymentNotes,
+                      transactionId: paymentMethod === "upi" ? transactionId : undefined,
                     }),
                   });
 
@@ -2291,6 +2338,7 @@ export default function OrdersPage() {
                   setPaymentAmount("");
                   setPaymentMethod("cash");
                   setPaymentNotes("");
+                  setTransactionId("");
                   setSelectedInvoice(null);
                   setSelectedOrder(null);
                 } catch (error) {
@@ -2349,6 +2397,53 @@ export default function OrdersPage() {
                     </div>
                   </div>
 
+                  {/* UPI QR Code Display */}
+                  {paymentMethod === "upi" && user?.upiId && paymentAmount && parseFloat(paymentAmount) > 0 && (
+                    <div className="mt-4 p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                      <h4 className="font-semibold text-sm mb-3 text-purple-900">UPI Payment QR Code</h4>
+                      <div className="flex flex-col items-center space-y-3">
+                        <img
+                          src={generateUPIQRCode(
+                            generateUPIString(
+                              user.upiId,
+                              user.businessName || user.name,
+                              parseFloat(paymentAmount),
+                              selectedInvoice?.invoiceNumber || "Payment"
+                            ),
+                            250
+                          )}
+                          alt="UPI Payment QR Code"
+                          className="w-48 h-48 border-4 border-white shadow-lg rounded-lg"
+                        />
+                        <div className="text-center">
+                          <p className="text-sm font-medium text-purple-900">{user.businessName || user.name}</p>
+                          <p className="text-xs text-purple-700">{user.upiId}</p>
+                          <p className="text-lg font-bold mt-2 text-purple-900">₹{parseFloat(paymentAmount).toFixed(2)}</p>
+                        </div>
+                        <p className="text-xs text-purple-800 text-center">
+                          Customer can scan this QR code with any UPI app to pay
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Transaction ID for UPI */}
+                  {paymentMethod === "upi" && (
+                    <div className="space-y-2 mt-4">
+                      <Label htmlFor="transaction-id" className="text-sm">UPI Transaction ID / UTR *</Label>
+                      <Input
+                        id="transaction-id"
+                        value={transactionId}
+                        onChange={(e) => setTransactionId(e.target.value)}
+                        placeholder="Enter 12-digit UPI transaction ID"
+                        required={paymentMethod === "upi"}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Enter the transaction ID from the payment confirmation
+                      </p>
+                    </div>
+                  )}
+
                   <div className="space-y-2 mt-4">
                     <Label htmlFor="payment-notes" className="text-sm">Notes (Optional)</Label>
                     <Textarea
@@ -2372,6 +2467,7 @@ export default function OrdersPage() {
                         setPaymentAmount("");
                         setPaymentMethod("cash");
                         setPaymentNotes("");
+                        setTransactionId("");
                         setSelectedInvoice(null);
                         setSelectedOrder(null);
                       }}
@@ -2412,6 +2508,7 @@ export default function OrdersPage() {
                             setPaymentAmount("");
                             setPaymentMethod("cash");
                             setPaymentNotes("");
+                            setTransactionId("");
                             setSelectedInvoice(null);
                             setSelectedOrder(null);
                           } catch (error) {

@@ -81,9 +81,9 @@ export default function DashboardPage() {
 
   const todayStats = [
     {
-      title: "Today's Revenue",
+      title: "Today's Deliveries",
       value: `₹${(dashboardData?.today?.revenue || 0).toFixed(2)}`,
-      subtitle: `${dashboardData?.today?.orders || 0} orders`,
+      subtitle: `${dashboardData?.today?.orders || 0} scheduled`,
       icon: IndianRupee,
       color: "text-green-600",
       bgColor: "bg-green-50",
@@ -352,6 +352,72 @@ export default function DashboardPage() {
         </Card>
       )}
 
+      {/* Credit Limit Warnings */}
+      {(dashboardData?.creditLimitWarnings || []).length > 0 && (
+        <Card className="border-yellow-200">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-yellow-600" />
+                  Credit Limit Warnings
+                </CardTitle>
+                <CardDescription>
+                  Customers near or over their credit limit
+                </CardDescription>
+              </div>
+              <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                {dashboardData.creditLimitWarnings.length} customers
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {dashboardData.creditLimitWarnings.slice(0, 5).map((customer) => (
+                <Link
+                  key={customer._id}
+                  href={`/dashboard/customers`}
+                  className="flex items-center justify-between p-3 border rounded-lg hover:bg-yellow-50 transition-colors"
+                >
+                  <div className="flex-1">
+                    <p className="font-medium text-sm">{customer.name}</p>
+                    <div className="mt-1">
+                      <div className="w-full bg-gray-200 rounded-full h-1.5">
+                        <div
+                          className={`h-1.5 rounded-full ${
+                            customer.utilization >= 100 ? 'bg-red-600' :
+                            customer.utilization >= 90 ? 'bg-orange-500' :
+                            'bg-yellow-500'
+                          }`}
+                          style={{ width: `${Math.min(customer.utilization, 100)}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right ml-4">
+                    <p className={`font-semibold text-sm ${
+                      customer.utilization >= 100 ? 'text-red-600' :
+                      customer.utilization >= 90 ? 'text-orange-600' :
+                      'text-yellow-600'
+                    }`}>
+                      {customer.utilization.toFixed(0)}%
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      ₹{customer.outstanding.toFixed(0)} / ₹{customer.limit.toFixed(0)}
+                    </p>
+                  </div>
+                </Link>
+              ))}
+              <Link href="/dashboard/customers">
+                <Button variant="outline" className="w-full">
+                  View All Customers
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Recent Activity */}
       <div className="grid gap-4 md:grid-cols-2">
         {/* Today's Orders */}
@@ -361,9 +427,9 @@ export default function DashboardPage() {
               <div>
                 <CardTitle className="flex items-center gap-2">
                   <Calendar className="h-5 w-5" />
-                  Today's Orders
+                  Today's Deliveries
                 </CardTitle>
-                <CardDescription>Orders placed today</CardDescription>
+                <CardDescription>Orders scheduled for delivery today</CardDescription>
               </div>
               <Badge variant="outline">{dashboardData.today.orders} orders</Badge>
             </div>
@@ -372,7 +438,7 @@ export default function DashboardPage() {
             {(dashboardData?.todayOrders || []).length === 0 ? (
               <div className="text-center py-6 text-muted-foreground">
                 <ShoppingCart className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                <p>No orders today yet</p>
+                <p>No deliveries scheduled for today</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -465,11 +531,11 @@ export default function DashboardPage() {
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <Link
-              href="/dashboard/orders"
+              href="/dashboard/quick-order"
               className="flex flex-col items-center justify-center p-4 border rounded-lg hover:bg-primary/5 hover:border-primary transition-colors"
             >
               <ShoppingCart className="h-8 w-8 text-primary mb-2" />
-              <span className="text-sm font-medium">New Order</span>
+              <span className="text-sm font-medium">Quick Order</span>
             </Link>
             <Link
               href="/dashboard/customers"
@@ -479,11 +545,11 @@ export default function DashboardPage() {
               <span className="text-sm font-medium">Add Customer</span>
             </Link>
             <Link
-              href="/dashboard/stock"
+              href="/dashboard/daily-summary"
               className="flex flex-col items-center justify-center p-4 border rounded-lg hover:bg-primary/5 hover:border-primary transition-colors"
             >
-              <Package className="h-8 w-8 text-primary mb-2" />
-              <span className="text-sm font-medium">Stock In</span>
+              <IndianRupee className="h-8 w-8 text-primary mb-2" />
+              <span className="text-sm font-medium">Daily Summary</span>
             </Link>
             <Link
               href="/dashboard/reports"
@@ -500,9 +566,9 @@ export default function DashboardPage() {
       <Dialog open={isRevenueDialogOpen} onOpenChange={setIsRevenueDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Today's Revenue Breakdown</DialogTitle>
+            <DialogTitle>Today's Delivery Schedule</DialogTitle>
             <DialogDescription>
-              Detailed breakdown of today's revenue from {dashboardData.today.orders} orders
+              Orders scheduled for delivery on {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -519,7 +585,7 @@ export default function DashboardPage() {
             
             {(dashboardData?.todayOrders || []).length > 0 ? (
               <div className="space-y-2">
-                <h3 className="font-semibold">Today's Orders</h3>
+                <h3 className="font-semibold">Scheduled Deliveries</h3>
                 <div className="border rounded-lg overflow-hidden">
                   <table className="w-full text-sm">
                     <thead className="bg-muted">
@@ -548,7 +614,7 @@ export default function DashboardPage() {
                 </div>
               </div>
             ) : (
-              <p className="text-center text-muted-foreground py-4">No orders today</p>
+              <p className="text-center text-muted-foreground py-4">No deliveries scheduled for today</p>
             )}
           </div>
         </DialogContent>

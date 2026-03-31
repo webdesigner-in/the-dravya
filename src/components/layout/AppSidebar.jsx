@@ -17,6 +17,8 @@ import {
   Warehouse,
   MapPin,
   LogOut,
+  Calculator,
+  Zap,
 } from "lucide-react";
 import {
   Sidebar,
@@ -47,6 +49,7 @@ const menuItems = [
     title: "Operations",
     items: [
       { title: "Orders", url: "/dashboard/orders", icon: ShoppingCart },
+      { title: "Quick Order", url: "/dashboard/quick-order", icon: Zap },
     ],
   },
   {
@@ -54,6 +57,7 @@ const menuItems = [
     items: [
       { title: "Invoices", url: "/dashboard/invoices", icon: FileText },
       { title: "Customer Ledger", url: "/dashboard/reports", icon: BarChart3 },
+      { title: "Daily Summary", url: "/dashboard/daily-summary", icon: Calculator },
     ],
   },
   {
@@ -81,9 +85,17 @@ export function AppSidebar() {
   const user = useAuthStore((state) => state.user);
   const isAdmin = useAuthStore((state) => state.isAdmin());
   const logout = useAuthStore((state) => state.logout);
+  const fetchUser = useAuthStore((state) => state.fetchUser);
   const router = useRouter();
   const sidebarContentRef = useRef(null);
   const { isMobile, setOpenMobile } = useSidebar();
+
+  // Fetch user data on mount if not loaded
+  useEffect(() => {
+    if (!user) {
+      fetchUser();
+    }
+  }, [user, fetchUser]);
 
   // Save and restore sidebar scroll position
   useEffect(() => {

@@ -15,7 +15,8 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
-import { User, Lock, Mail, Phone, MapPin, Eye, EyeOff } from "lucide-react";
+import { User, Lock, Mail, Phone, MapPin, Eye, EyeOff, QrCode } from "lucide-react";
+import { validateUPIId } from "@/lib/upi";
 
 export default function SettingsPage() {
   const user = useAuthStore((state) => state.user);
@@ -39,6 +40,12 @@ export default function SettingsPage() {
     confirmPassword: "",
   });
 
+  const [upiData, setUpiData] = useState({
+    upiId: "",
+    businessName: "",
+  });
+  const [isUpiLoading, setIsUpiLoading] = useState(false);
+
   useEffect(() => {
     if (user) {
       setProfileData({
@@ -47,11 +54,21 @@ export default function SettingsPage() {
         phone: user.phone || "",
         address: user.address || "",
       });
+      setUpiData({
+        upiId: user.upiId || "",
+        businessName: user.businessName || user.name || "",
+      });
     }
   }, [user]);
 
   const handleProfileUpdate = async (e) => {
     e.preventDefault();
+
+    if (!profileData.name || !profileData.email) {
+      toast.error("Name and email are required");
+      return;
+    }
+
     setIsLoading(true);
 
     try {
@@ -117,6 +134,65 @@ export default function SettingsPage() {
       toast.error(error.message);
     } finally {
       setIsPasswordLoading(false);
+    }
+  };
+
+  const handleUpiUpdate = async (e) => {
+    e.preventDefault();
+
+    // If UPI ID is already set, only allow updating business name
+    if (user?.upiId) {
+      if (upiData.upiId !== user.upiId) {
+        toast.error("UPI ID cannot be changed once set");
+        return;
+      }
+    } else {
+      // Validate UPI ID only if it's being set for the first time
+      if (upiData.upiId && !validateUPIId(upiData.upiId)) {
+        toast.error("Invalid UPI ID format. Use format: username@provider");
+        return;
+      }
+    }
+
+    if (!upiData.businessName.trim()) {
+      toast.error("Please enter business name");
+      return;
+    }
+
+    setIsUpiLoading(true);
+
+    try {
+      const payload = user?.upiId 
+        ? { businessName: upiData.businessName.trim() }
+        : { 
+            upiId: upiData.upiId.trim(),
+            businessName: upiData.businessName.trim(),
+          };
+
+      const response = await fetch("/api/auth/update-profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update UPI settings");
+      }
+
+      updateUser(data.user);
+      
+      setUpiData({
+        upiId: data.user.upiId || "",
+        businessName: data.user.businessName || data.user.name || "",
+      });
+
+      toast.success(user?.upiId ? "Business name updated successfully!" : "UPI settings saved successfully!");
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsUpiLoading(false);
     }
   };
 
@@ -367,6 +443,87 @@ export default function SettingsPage() {
 
               <Button type="submit" disabled={isPasswordLoading}>
                 {isPasswordLoading ? "Changing..." : "Change Password"}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* UPI Payment Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <QrCode className="h-5 w-5" />
+            UPI Payment Settings
+          </CardTitle>
+          <CardDescription>
+            Configure your UPI ID for receiving payments via QR code
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {/* Display current UPI settings if they exist */}
+          {user?.upiId && (
+            <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <h4 className="font-semibold text-sm text-green-900 mb-2">Current UPI Settings</h4>
+              <div className="space-y-1 text-sm">
+                <p><strong>UPI ID:</strong> {user.upiId}</p>
+                <p><strong>Business Name:</strong> {user.businessName || user.name}</p>
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={handleUpiUpdate}>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="upiId">UPI ID</Label>
+                  <Input
+                    id="upiId"
+                    value={upiData.upiId}
+                    onChange={(e) =>
+                      setUpiData({ ...upiData, upiId: e.target.value.toLowerCase() })
+                    }
+                    placeholder="yourname@paytm"
+                    disabled={!!user?.upiId}
+                  />
+                  {user?.upiId ? (
+                    <p className="text-xs text-orange-600">
+                      ⚠️ UPI ID cannot be changed once set for security reasons
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Format: username@provider (e.g., yourname@paytm, yourname@phonepe)
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="businessName">Business Name</Label>
+                  <Input
+                    id="businessName"
+                    value={upiData.businessName}
+                    onChange={(e) =>
+                      setUpiData({ ...upiData, businessName: e.target.value })
+                    }
+                    placeholder="Your Business Name"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    This will appear on the payment QR code
+                  </p>
+                </div>
+              </div>
+
+              {upiData.upiId && !user?.upiId && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    <strong>Note:</strong> Once saved, customers will be able to scan a QR code to pay you directly. 
+                    You'll need to manually confirm payments in the system.
+                  </p>
+                </div>
+              )}
+
+              <Button type="submit" disabled={isUpiLoading}>
+                {isUpiLoading ? "Updating..." : user?.upiId ? "Update Business Name" : "Save UPI Settings"}
               </Button>
             </div>
           </form>

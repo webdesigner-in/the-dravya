@@ -29,7 +29,6 @@ import {
   Calendar,
 } from "lucide-react";
 import Link from "next/link";
-import PageHeader from "@/components/layout/PageHeader";
 import { useCustomerLedger } from "@/hooks/useAnalytics";
 import { useOrders } from "@/hooks/useOrders";
 
@@ -136,22 +135,22 @@ export default function ReportsPage() {
   }, [isLoading, isFetchingNextPage, hasNextPage, searchQuery, fetchNextPage]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2 p-2 sm:p-0 sm:space-y-4">
       {/* Header with Month Filter */}
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+      <div className="flex flex-col gap-1.5 sm:gap-2">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1.5 sm:gap-2">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Customer Ledger</h1>
-            <p className="text-sm text-muted-foreground">
-              {isAdmin ? "Track customer payments and outstanding dues" : "View customer payment status (Limited View)"}
+            <h1 className="text-lg sm:text-2xl font-bold tracking-tight">Customer Ledger</h1>
+            <p className="text-[10px] sm:text-xs text-muted-foreground">
+              {isAdmin ? "Track payments and dues" : "View payment status"}
             </p>
           </div>
           
           {/* Month Filter */}
-          <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-muted-foreground" />
+          <div className="flex items-center gap-1.5 w-full sm:w-auto">
+            <Calendar className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
             <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger className="w-45">
+              <SelectTrigger className="w-full sm:w-45 h-8 text-xs sm:h-9 sm:text-sm">
                 <SelectValue placeholder="Select period" />
               </SelectTrigger>
               <SelectContent>
@@ -169,9 +168,9 @@ export default function ReportsPage() {
       {/* Info message for distributors */}
       {!isAdmin && (
         <Card className="bg-blue-50 border-blue-200">
-          <CardContent className="py-3 px-4">
-            <p className="text-xs text-blue-800">
-              <strong>Note:</strong> You have access to view customer ledger information. Financial summaries are restricted to admin users only.
+          <CardContent className="py-1.5 px-2 sm:py-2 sm:px-3">
+            <p className="text-[9px] sm:text-[10px] text-blue-800">
+              <strong>Note:</strong> Financial summaries are admin-only.
             </p>
           </CardContent>
         </Card>
@@ -179,63 +178,63 @@ export default function ReportsPage() {
 
       {/* Summary Cards - Admin Only */}
       {isAdmin && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-1.5 sm:gap-2">
           <Card>
-            <CardHeader className="pb-2 px-4 pt-4">
+            <CardHeader className="pb-1 px-2 pt-2 sm:pb-1.5 sm:px-3 sm:pt-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-xs font-medium text-muted-foreground">Total Revenue</CardTitle>
-                <IndianRupee className="h-3.5 w-3.5 text-muted-foreground" />
+                <CardTitle className="text-[9px] sm:text-[10px] font-medium text-muted-foreground">Revenue</CardTitle>
+                <IndianRupee className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-muted-foreground" />
               </div>
             </CardHeader>
-            <CardContent className="px-4 pb-4">
-              <div className="text-xl font-bold">₹{summary.totalRevenue.toFixed(2)}</div>
-              <p className="text-[10px] text-muted-foreground mt-0.5">
-                {selectedMonth === "all" ? "All time" : monthOptions.find(m => m.value === selectedMonth)?.label}
+            <CardContent className="px-2 pb-2 sm:px-3 sm:pb-3">
+              <div className="text-sm sm:text-base lg:text-lg font-bold">₹{summary.totalRevenue.toFixed(2)}</div>
+              <p className="text-[8px] sm:text-[9px] text-muted-foreground mt-0.5">
+                {selectedMonth === "all" ? "All time" : monthOptions.find(m => m.value === selectedMonth)?.label.split(' ')[0]}
               </p>
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader className="pb-2 px-4 pt-4">
+            <CardHeader className="pb-1 px-2 pt-2 sm:pb-1.5 sm:px-3 sm:pt-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-xs font-medium text-muted-foreground">Total Paid</CardTitle>
-                <TrendingUp className="h-3.5 w-3.5 text-green-600" />
+                <CardTitle className="text-[9px] sm:text-[10px] font-medium text-muted-foreground">Paid</CardTitle>
+                <TrendingUp className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-green-600" />
               </div>
             </CardHeader>
-            <CardContent className="px-4 pb-4">
-              <div className="text-xl font-bold text-green-600">₹{summary.totalPaid.toFixed(2)}</div>
-              <p className="text-[10px] text-muted-foreground mt-0.5">
-                {selectedMonth === "all" ? "All time" : monthOptions.find(m => m.value === selectedMonth)?.label}
+            <CardContent className="px-2 pb-2 sm:px-3 sm:pb-3">
+              <div className="text-sm sm:text-base lg:text-lg font-bold text-green-600">₹{summary.totalPaid.toFixed(2)}</div>
+              <p className="text-[8px] sm:text-[9px] text-muted-foreground mt-0.5">
+                {selectedMonth === "all" ? "All time" : monthOptions.find(m => m.value === selectedMonth)?.label.split(' ')[0]}
               </p>
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader className="pb-2 px-4 pt-4">
+            <CardHeader className="pb-1 px-2 pt-2 sm:pb-1.5 sm:px-3 sm:pt-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-xs font-medium text-muted-foreground">Total Due</CardTitle>
-                <TrendingDown className="h-3.5 w-3.5 text-red-600" />
+                <CardTitle className="text-[9px] sm:text-[10px] font-medium text-muted-foreground">Due</CardTitle>
+                <TrendingDown className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-red-600" />
               </div>
             </CardHeader>
-            <CardContent className="px-4 pb-4">
-              <div className="text-xl font-bold text-red-600">₹{summary.totalDue.toFixed(2)}</div>
-              <p className="text-[10px] text-muted-foreground mt-0.5">
-                {selectedMonth === "all" ? "All time" : monthOptions.find(m => m.value === selectedMonth)?.label}
+            <CardContent className="px-2 pb-2 sm:px-3 sm:pb-3">
+              <div className="text-sm sm:text-base lg:text-lg font-bold text-red-600">₹{summary.totalDue.toFixed(2)}</div>
+              <p className="text-[8px] sm:text-[9px] text-muted-foreground mt-0.5">
+                {selectedMonth === "all" ? "All time" : monthOptions.find(m => m.value === selectedMonth)?.label.split(' ')[0]}
               </p>
             </CardContent>
           </Card>
 
           <Card>
-            <CardHeader className="pb-2 px-4 pt-4">
+            <CardHeader className="pb-1 px-2 pt-2 sm:pb-1.5 sm:px-3 sm:pt-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-xs font-medium text-muted-foreground">Customers</CardTitle>
-                <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                <CardTitle className="text-[9px] sm:text-[10px] font-medium text-muted-foreground">Customers</CardTitle>
+                <Users className="h-2.5 w-2.5 sm:h-3 sm:w-3 text-muted-foreground" />
               </div>
             </CardHeader>
-            <CardContent className="px-4 pb-4">
-              <div className="text-xl font-bold">{summary.totalCustomers}</div>
-              <p className="text-[10px] text-muted-foreground mt-0.5">
-                {selectedMonth === "all" ? "All time" : `In ${monthOptions.find(m => m.value === selectedMonth)?.label.split(' ')[0]}`}
+            <CardContent className="px-2 pb-2 sm:px-3 sm:pb-3">
+              <div className="text-sm sm:text-base lg:text-lg font-bold">{summary.totalCustomers}</div>
+              <p className="text-[8px] sm:text-[9px] text-muted-foreground mt-0.5">
+                {selectedMonth === "all" ? "All time" : monthOptions.find(m => m.value === selectedMonth)?.label.split(' ')[0]}
               </p>
             </CardContent>
           </Card>
@@ -244,160 +243,155 @@ export default function ReportsPage() {
 
       {/* Customer Ledger Table */}
       <Card>
-        <CardHeader className="pb-3">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        <CardHeader className="pb-1.5 px-2 pt-2 sm:pb-2 sm:px-3 sm:pt-3">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1.5 sm:gap-2">
             <div>
-              <CardTitle className="text-base">Customer Ledger</CardTitle>
-              <CardDescription className="text-xs">
+              <CardTitle className="text-xs sm:text-sm lg:text-base">Customer Ledger</CardTitle>
+              <CardDescription className="text-[9px] sm:text-[10px]">
                 {searchQuery
-                  ? `${filteredLedger.length} of ${pagination.totalItems} customers`
+                  ? `${filteredLedger.length} of ${pagination.totalItems}`
                   : `${pagination.totalItems} customer${pagination.totalItems !== 1 ? 's' : ''}`}
               </CardDescription>
             </div>
             <div className="w-full sm:w-56">
-              <div className="flex gap-2">
+              <div className="flex gap-1">
                 <Input
-                  placeholder="Search customers..."
+                  placeholder="Search..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full text-sm h-9"
+                  className="w-full text-[11px] sm:text-xs h-7 sm:h-8"
                 />
-                <Button size="icon" variant="outline" className="h-9 w-9 shrink-0">
-                  <Search className="h-3.5 w-3.5" />
+                <Button size="icon" variant="outline" className="h-7 w-7 sm:h-8 sm:w-8 shrink-0">
+                  <Search className="h-3 w-3" />
                 </Button>
               </div>
             </div>
           </div>
         </CardHeader>
-        <CardContent className="px-3 sm:px-6">
+        <CardContent className="px-0 sm:px-3 pb-2 sm:pb-3">
           {isLoading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+            <div className="flex justify-center py-4 sm:py-6">
+              <div className="animate-spin rounded-full h-5 w-5 sm:h-6 sm:w-6 border-b-2 border-gray-900"></div>
             </div>
           ) : filteredLedger.length === 0 ? (
-            <div className="text-center py-8">
-              <FileText className="mx-auto h-12 w-12 text-gray-400" />
-              <p className="mt-2 text-muted-foreground text-sm">
-                {searchQuery ? "No customers found matching your search" : "No customer data available"}
+            <div className="text-center py-4 sm:py-6">
+              <FileText className="mx-auto h-8 w-8 sm:h-10 sm:w-10 text-gray-400" />
+              <p className="mt-2 text-muted-foreground text-[10px] sm:text-xs">
+                {searchQuery ? "No customers found" : "No data available"}
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto -mx-3 sm:mx-0">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
                 <thead className="border-b">
                   <tr className="text-left">
-                    <th className="pb-2 px-2 text-xs font-medium">Customer</th>
-                    <th className="pb-2 px-2 text-xs font-medium text-center">Orders</th>
-                    <th className="pb-2 px-2 text-xs font-medium text-center hidden sm:table-cell">Due Orders</th>
-                    <th className="pb-2 px-2 text-xs font-medium text-right">Total</th>
-                    <th className="pb-2 px-2 text-xs font-medium text-right hidden md:table-cell">Paid</th>
-                    <th className="pb-2 px-2 text-xs font-medium text-right">Due</th>
-                    <th className="pb-2 px-2 text-xs font-medium text-center hidden lg:table-cell">Status</th>
-                    <th className="pb-2 px-2 text-xs font-medium text-center">Actions</th>
+                    <th className="pb-1.5 px-1.5 sm:pb-2 sm:px-2 text-[9px] sm:text-[10px] font-medium">Customer</th>
+                    <th className="pb-1.5 px-1.5 sm:pb-2 sm:px-2 text-[9px] sm:text-[10px] font-medium text-center">Orders</th>
+                    <th className="pb-1.5 px-1.5 sm:pb-2 sm:px-2 text-[9px] sm:text-[10px] font-medium text-right">Total</th>
+                    <th className="pb-1.5 px-1.5 sm:pb-2 sm:px-2 text-[9px] sm:text-[10px] font-medium text-right">Due</th>
+                    <th className="pb-1.5 px-1.5 sm:pb-2 sm:px-2 text-[9px] sm:text-[10px] font-medium text-center"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {filteredLedger.map((ledger, index) => (
                     <React.Fragment key={`${ledger.customer._id}-${index}`}>
                       <tr className="hover:bg-muted/50">
-                        <td className="py-2.5 px-2">
-                          <div className="flex items-center gap-2">
-                            <div>
-                              <p className="font-medium text-xs">{ledger.customer.name}</p>
-                              <p className="text-[10px] text-muted-foreground">{ledger.customer.phone}</p>
+                        <td className="py-1.5 px-1.5 sm:py-2 sm:px-2">
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex items-center gap-1">
+                              <p className="font-medium text-[10px] sm:text-[11px]">{ledger.customer.name}</p>
+                              {ledger.customer.isGuest && (
+                                <span className="inline-flex items-center px-0.5 py-0.5 rounded text-[8px] sm:text-[9px] font-medium bg-purple-100 text-purple-700">
+                                  Guest
+                                </span>
+                              )}
                             </div>
-                            {ledger.customer.isGuest && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700 shrink-0">
-                                Guest
+                            <p className="text-[8px] sm:text-[9px] text-muted-foreground">{ledger.customer.phone}</p>
+                          </div>
+                        </td>
+                        <td className="py-1.5 px-1.5 sm:py-2 sm:px-2 text-center">
+                          <div className="text-[10px] sm:text-[11px] font-medium">{ledger.totalOrders}</div>
+                          {ledger.deliveredUnpaidOrders > 0 && (
+                            <div className="text-[8px] sm:text-[9px] text-orange-600">{ledger.deliveredUnpaidOrders} due</div>
+                          )}
+                        </td>
+                        <td className="py-1.5 px-1.5 sm:py-2 sm:px-2 text-right">
+                          <div className="text-[10px] sm:text-[11px] font-medium">₹{ledger.totalAmount.toFixed(2)}</div>
+                          <div className="text-[8px] sm:text-[9px] text-green-600">₹{ledger.paidAmount.toFixed(2)}</div>
+                        </td>
+                        <td className="py-1.5 px-1.5 sm:py-2 sm:px-2 text-right">
+                          <div className="text-[10px] sm:text-[11px] text-red-600 font-semibold">
+                            ₹{ledger.dueAmount.toFixed(2)}
+                          </div>
+                          <div className="mt-0.5">
+                            {ledger.dueAmount === 0 ? (
+                              <span className="inline-flex items-center px-0.5 py-0.5 rounded-full text-[7px] sm:text-[8px] font-medium bg-green-100 text-green-800">
+                                Paid
+                              </span>
+                            ) : ledger.paidAmount === 0 ? (
+                              <span className="inline-flex items-center px-0.5 py-0.5 rounded-full text-[7px] sm:text-[8px] font-medium bg-red-100 text-red-800">
+                                Unpaid
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-0.5 py-0.5 rounded-full text-[7px] sm:text-[8px] font-medium bg-yellow-100 text-yellow-800">
+                                Partial
                               </span>
                             )}
                           </div>
                         </td>
-                        <td className="py-2.5 px-2 text-center text-xs">{ledger.totalOrders}</td>
-                        <td className="py-2.5 px-2 text-center text-xs text-orange-600 hidden sm:table-cell">{ledger.deliveredUnpaidOrders || 0}</td>
-                        <td className="py-2.5 px-2 text-right text-xs font-medium">₹{ledger.totalAmount.toFixed(2)}</td>
-                        <td className="py-2.5 px-2 text-right text-xs text-green-600 hidden md:table-cell">₹{ledger.paidAmount.toFixed(2)}</td>
-                        <td className="py-2.5 px-2 text-right text-xs text-red-600 font-semibold">
-                          ₹{ledger.dueAmount.toFixed(2)}
-                        </td>
-                        <td className="py-2.5 px-2 text-center hidden lg:table-cell">
-                          {ledger.dueAmount === 0 ? (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-800">
-                              Paid
-                            </span>
-                          ) : ledger.paidAmount === 0 ? (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-800">
-                              Unpaid
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-yellow-100 text-yellow-800">
-                              Partial
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-2.5 px-2 text-center">
+                        <td className="py-1.5 px-1.5 sm:py-2 sm:px-2 text-center">
                           <Button 
                             variant="outline" 
                             size="sm"
-                            className="h-7 text-xs px-2"
+                            className="h-6 text-[9px] px-1.5 sm:h-7 sm:text-[10px] sm:px-2"
                             onClick={() => handleToggleExpand(ledger.customer._id)}
                           >
                             {expandedCustomer === ledger.customer._id ? (
-                              <>
-                                <ChevronUp className="h-3 w-3 mr-1" />
-                                <span className="hidden sm:inline">Hide</span>
-                              </>
+                              <ChevronUp className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                             ) : (
-                              <>
-                                <ChevronDown className="h-3 w-3 mr-1" />
-                                <span className="hidden sm:inline">View</span>
-                              </>
+                              <ChevronDown className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                             )}
                           </Button>
                         </td>
                       </tr>
                       {expandedCustomer === ledger.customer._id && (
                         <tr>
-                          <td colSpan="8" className="p-0">
-                            <div className="bg-muted/30 p-3">
+                          <td colSpan="5" className="p-0">
+                            <div className="bg-muted/30 p-1.5 sm:p-2">
                               {isLoadingOrders ? (
-                                <div className="flex justify-center py-4">
-                                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
+                                <div className="flex justify-center py-2 sm:py-3">
+                                  <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-gray-900"></div>
                                 </div>
                               ) : customerOrders.length === 0 ? (
-                                <p className="text-center text-xs text-muted-foreground py-4">No orders found</p>
+                                <p className="text-center text-[9px] sm:text-[10px] text-muted-foreground py-2 sm:py-3">No orders found</p>
                               ) : (
                                 <div className="overflow-x-auto">
-                                  <table className="w-full text-xs">
+                                  <table className="w-full text-[9px] sm:text-[10px]">
                                     <thead className="bg-muted">
                                       <tr>
-                                        <th className="text-left p-1.5 font-medium">Order #</th>
-                                        <th className="text-left p-1.5 font-medium">Date</th>
-                                        <th className="text-center p-1.5 font-medium hidden sm:table-cell">Items</th>
-                                        <th className="text-center p-1.5 font-medium">Status</th>
-                                        <th className="text-center p-1.5 font-medium hidden md:table-cell">Payment</th>
-                                        <th className="text-right p-1.5 font-medium">Total</th>
-                                        <th className="text-right p-1.5 font-medium hidden lg:table-cell">Paid</th>
-                                        <th className="text-right p-1.5 font-medium">Due</th>
+                                        <th className="text-left p-1 sm:p-1.5 font-medium text-[8px] sm:text-[9px]">Order</th>
+                                        <th className="text-left p-1 sm:p-1.5 font-medium text-[8px] sm:text-[9px]">Date</th>
+                                        <th className="text-center p-1 sm:p-1.5 font-medium text-[8px] sm:text-[9px]">Status</th>
+                                        <th className="text-right p-1 sm:p-1.5 font-medium text-[8px] sm:text-[9px]">Total</th>
+                                        <th className="text-right p-1 sm:p-1.5 font-medium text-[8px] sm:text-[9px]">Due</th>
                                       </tr>
                                     </thead>
                                     <tbody className="divide-y">
                                       {customerOrders.map((order) => (
                                         <tr key={order._id} className="hover:bg-muted/50">
-                                          <td className="p-1.5">
+                                          <td className="p-1 sm:p-1.5">
                                             <Link 
                                               href={`/dashboard/orders?customer=${ledger.customer._id}`}
-                                              className="text-blue-600 hover:underline font-mono text-[10px]"
+                                              className="text-blue-600 hover:underline font-mono text-[8px] sm:text-[9px]"
                                             >
                                               {order.orderNumber}
                                             </Link>
                                           </td>
-                                          <td className="p-1.5 text-[10px]">
+                                          <td className="p-1 sm:p-1.5 text-[8px] sm:text-[9px]">
                                             {formatDate(order.deliveryDate || order.createdAt)}
                                           </td>
-                                          <td className="p-1.5 text-center hidden sm:table-cell">{order.items?.length || 0}</td>
-                                          <td className="p-1.5 text-center">
-                                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] capitalize ${
+                                          <td className="p-1 sm:p-1.5 text-center">
+                                            <span className={`inline-flex items-center px-0.5 py-0.5 rounded text-[7px] sm:text-[8px] capitalize ${
                                               order.status === 'delivered' ? 'bg-green-100 text-green-800' :
                                               order.status === 'cancelled' ? 'bg-red-100 text-red-800' :
                                               order.status === 'out-for-delivery' ? 'bg-orange-100 text-orange-800' :
@@ -406,22 +400,10 @@ export default function ReportsPage() {
                                               {order.status}
                                             </span>
                                           </td>
-                                          <td className="p-1.5 text-center hidden md:table-cell">
-                                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] capitalize ${
-                                              order.paymentStatus === 'paid' ? 'bg-green-100 text-green-800' :
-                                              order.paymentStatus === 'partial' ? 'bg-yellow-100 text-yellow-800' :
-                                              'bg-red-100 text-red-800'
-                                            }`}>
-                                              {order.paymentStatus}
-                                            </span>
-                                          </td>
-                                          <td className="p-1.5 text-right font-medium">
+                                          <td className="p-1 sm:p-1.5 text-right font-medium text-[8px] sm:text-[9px]">
                                             ₹{parseFloat(order.finalAmount || 0).toFixed(2)}
                                           </td>
-                                          <td className="p-1.5 text-right text-green-600 hidden lg:table-cell">
-                                            ₹{parseFloat(order.paidAmount || 0).toFixed(2)}
-                                          </td>
-                                          <td className="p-1.5 text-right text-red-600 font-medium">
+                                          <td className="p-1 sm:p-1.5 text-right text-red-600 font-medium text-[8px] sm:text-[9px]">
                                             ₹{(parseFloat(order.finalAmount || 0) - parseFloat(order.paidAmount || 0)).toFixed(2)}
                                           </td>
                                         </tr>
@@ -429,10 +411,9 @@ export default function ReportsPage() {
                                     </tbody>
                                     <tfoot className="bg-muted font-semibold">
                                       <tr>
-                                        <td colSpan="5" className="p-1.5 text-right text-xs">Totals:</td>
-                                        <td className="p-1.5 text-right text-xs">₹{ledger.totalAmount.toFixed(2)}</td>
-                                        <td className="p-1.5 text-right text-xs text-green-600 hidden lg:table-cell">₹{ledger.paidAmount.toFixed(2)}</td>
-                                        <td className="p-1.5 text-right text-xs text-red-600">₹{ledger.dueAmount.toFixed(2)}</td>
+                                        <td colSpan="3" className="p-1 sm:p-1.5 text-right text-[8px] sm:text-[9px]">Totals:</td>
+                                        <td className="p-1 sm:p-1.5 text-right text-[8px] sm:text-[9px]">₹{ledger.totalAmount.toFixed(2)}</td>
+                                        <td className="p-1 sm:p-1.5 text-right text-[8px] sm:text-[9px] text-red-600">₹{ledger.dueAmount.toFixed(2)}</td>
                                       </tr>
                                     </tfoot>
                                   </table>
@@ -451,16 +432,16 @@ export default function ReportsPage() {
           
           {/* Loading more indicator */}
           {isFetchingNextPage && (
-            <div className="flex justify-center py-3">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-900"></div>
-              <span className="ml-2 text-xs text-muted-foreground">Loading more...</span>
+            <div className="flex justify-center py-1.5 sm:py-2">
+              <div className="animate-spin rounded-full h-3.5 w-3.5 sm:h-4 sm:w-4 border-b-2 border-gray-900"></div>
+              <span className="ml-1.5 text-[9px] sm:text-[10px] text-muted-foreground">Loading...</span>
             </div>
           )}
           
           {/* End of results indicator */}
           {!hasNextPage && !searchQuery && filteredLedger.length > 0 && (
-            <div className="text-center py-3">
-              <p className="text-xs text-muted-foreground">No more data to load</p>
+            <div className="text-center py-1.5 sm:py-2">
+              <p className="text-[9px] sm:text-[10px] text-muted-foreground">End of list</p>
             </div>
           )}
         </CardContent>

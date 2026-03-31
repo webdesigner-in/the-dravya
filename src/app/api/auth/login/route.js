@@ -66,6 +66,10 @@ export async function POST(request) {
         name: user.name,
         email: user.email,
         role: user.role,
+        phone: user.phone,
+        address: user.address,
+        upiId: user.upiId,
+        businessName: user.businessName,
       },
     });
   } catch (error) {
