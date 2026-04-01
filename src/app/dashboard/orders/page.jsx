@@ -51,6 +51,7 @@ import {
   Eye,
   RefreshCw,
   Trash2,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
@@ -81,6 +82,7 @@ export default function OrdersPage() {
   
   const [customers, setCustomers] = useState([]);
   const [products, setProducts] = useState([]);
+  const [lastOrder, setLastOrder] = useState(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
@@ -231,6 +233,18 @@ export default function OrdersPage() {
     } catch (error) {
       console.error('Error fetching products:', error);
       toast.error('Error loading products');
+    }
+  }, []);
+
+  const fetchLastOrder = useCallback(async (customerId) => {
+    try {
+      const response = await fetch(`/api/orders?customer=${customerId}&limit=1&status=delivered`);
+      if (response.ok) {
+        const data = await response.json();
+        setLastOrder(data.orders?.[0] || null);
+      }
+    } catch {
+      setLastOrder(null);
     }
   }, []);
 
@@ -499,7 +513,8 @@ export default function OrdersPage() {
       deliveryDate: "",
       notes: "",
     });
-    setCustomerSearchQuery(""); // Reset customer search
+    setCustomerSearchQuery("");
+    setLastOrder(null);
   };
 
   const handleSubmit = async (e) => {
@@ -828,25 +843,86 @@ export default function OrdersPage() {
                       </div>
                       
                       {/* Selected customer display */}
-                      {formData.customer && (
-                        <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md flex items-center justify-between">
-                          <span className="text-sm text-blue-900">
-                            {customers.find(c => c._id === formData.customer)?.name || 'Selected customer'}
-                          </span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setFormData({ ...formData, customer: "" });
-                              setCustomerSearchQuery("");
-                            }}
-                            className="h-6 px-2"
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      )}
+                      {formData.customer && (() => {
+                        const selectedCustomer = customers.find(c => c._id === formData.customer);
+                        const creditLimit = parseFloat(selectedCustomer?.creditLimit) || 0;
+                        const outstanding = parseFloat(selectedCustomer?.outstandingBalance) || 0;
+                        const availableCredit = Math.max(0, creditLimit - outstanding);
+                        const orderTotal = calculateTotal();
+                        const willExceed = creditLimit > 0 && (outstanding + orderTotal) > creditLimit;
+                        const utilizationPct = creditLimit > 0 ? Math.min(100, ((outstanding + orderTotal) / creditLimit) * 100) : 0;
+
+                        return (
+                          <div className={`mt-2 p-3 border rounded-md ${willExceed ? 'bg-red-50 border-red-300' : 'bg-blue-50 border-blue-200'}`}>
+                            <div className="flex items-center justify-between">
+                              <span className={`text-sm font-medium ${willExceed ? 'text-red-900' : 'text-blue-900'}`}>
+                                {selectedCustomer?.name || 'Selected customer'}
+                              </span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                  setFormData({ ...formData, customer: "" });
+                                  setCustomerSearchQuery("");
+                                  setLastOrder(null);
+                                }}
+                                className="h-6 px-2"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            {creditLimit > 0 && (
+                              <div className="mt-2 space-y-1">
+                                <div className="flex justify-between text-xs text-muted-foreground">
+                                  <span>Credit Used: ₹{outstanding.toFixed(2)}</span>
+                                  <span>Limit: ₹{creditLimit.toFixed(2)}</span>
+                                </div>
+                                <div className="w-full bg-gray-200 rounded-full h-1.5">
+                                  <div
+                                    className={`h-1.5 rounded-full transition-all ${willExceed ? 'bg-red-500' : utilizationPct >= 80 ? 'bg-orange-500' : 'bg-green-500'}`}
+                                    style={{ width: `${utilizationPct}%` }}
+                                  />
+                                </div>
+                                <div className={`text-xs font-medium ${willExceed ? 'text-red-600' : 'text-green-700'}`}>
+                                  {willExceed
+                                    ? `⚠ Order exceeds credit limit by ₹${(outstanding + orderTotal - creditLimit).toFixed(2)}`
+                                    : `Available credit: ₹${availableCredit.toFixed(2)}`
+                                  }
+                                </div>
+                              </div>
+                            )}
+                            {lastOrder && (
+                              <div className="mt-2 pt-2 border-t border-blue-200 flex items-center justify-between gap-2">
+                                <div className="text-xs text-muted-foreground">
+                                  Last order: {lastOrder.items.map(i => `${i.product?.name || 'Item'} ×${i.quantity}`).join(', ')}
+                                </div>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-6 text-xs shrink-0 border-blue-400 text-blue-600 hover:bg-blue-100"
+                                  onClick={() => {
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      items: lastOrder.items.map(item => ({
+                                        product: item.product?._id || item.product,
+                                        quantity: item.quantity,
+                                        customPrice: item.price !== item.originalPrice ? String(item.price) : "",
+                                      })),
+                                      tax: String(lastOrder.tax || "0"),
+                                      notes: lastOrder.notes || prev.notes,
+                                    }));
+                                  }}
+                                >
+                                  <RotateCcw className="h-3 w-3 mr-1" />
+                                  Repeat
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                       
                       {/* Dropdown list */}
                       {customerSearchQuery && (
@@ -862,6 +938,7 @@ export default function OrdersPage() {
                                 onClick={() => {
                                   setFormData({ ...formData, customer: customer._id });
                                   setCustomerSearchQuery("");
+                                  fetchLastOrder(customer._id);
                                   document.getElementById('customer-dropdown')?.classList.add('hidden');
                                 }}
                                 className="w-full text-left px-4 py-3 hover:bg-gray-100 border-b last:border-b-0 text-sm"

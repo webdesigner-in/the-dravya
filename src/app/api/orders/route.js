@@ -1,14 +1,11 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
-import mongoose from 'mongoose';
 import Order from '@/models/Order';
 import Product from '@/models/Product';
 import Customer from '@/models/Customer';
-import Transaction from '@/models/Transaction';
-import Invoice from '@/models/Invoice';
 import { getAuthUser } from '@/lib/auth';
 import { generateOrderNumber } from '@/lib/numberGenerator';
-import { errorResponse, parsePagination } from '@/lib/apiHelpers';
+import { parsePagination } from '@/lib/apiHelpers';
 import { createLogger } from '@/lib/logger';
 import { QUERY_LIMITS, QUERY_TIMEOUTS } from '@/lib/constants';
 
@@ -94,7 +91,7 @@ export async function GET(request) {
           ];
         }
       } catch (searchError) {
-        console.error('Customer search error:', searchError);
+        logger.error('Customer search error', searchError);
         // Fallback to simple order number search if customer search fails
         filter.orderNumber = { $regex: `^${search.trim()}`, $options: 'i' };
       }
@@ -129,8 +126,7 @@ export async function GET(request) {
       },
     });
   } catch (error) {
-    console.error('Orders API Error:', error);
-    
+    logger.error('Get orders error', error);
     return NextResponse.json(
       {
         error: 'Failed to fetch orders',
@@ -254,6 +250,27 @@ export async function POST(request) {
     // Total amount is at original prices, final amount is after discount and tax
     const totalAmount = subtotalAtOriginalPrice;
     const finalAmount = subtotalAtCustomPrice + taxAmount;
+
+    // Credit limit check — must happen after finalAmount is known
+    if (!isGuestOrder && customerDoc) {
+      const creditLimit = parseFloat(customerDoc.creditLimit) || 0;
+      const currentOutstanding = parseFloat(customerDoc.outstandingBalance) || 0;
+      if (creditLimit > 0 && (currentOutstanding + finalAmount) > creditLimit) {
+        const availableCredit = Math.max(0, creditLimit - currentOutstanding);
+        return NextResponse.json(
+          {
+            error: 'Credit limit exceeded',
+            details: {
+              creditLimit: creditLimit.toFixed(2),
+              currentOutstanding: currentOutstanding.toFixed(2),
+              orderAmount: finalAmount.toFixed(2),
+              availableCredit: availableCredit.toFixed(2),
+            },
+          },
+          { status: 400 }
+        );
+      }
+    }
 
     // Generate unique order number using utility function
     const orderNumber = generateOrderNumber();

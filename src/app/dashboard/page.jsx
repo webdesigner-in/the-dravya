@@ -117,36 +117,58 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6 md:space-y-8">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-            <Badge variant={isAdmin ? "default" : "secondary"} className="text-xs">
-              {isAdmin ? "Admin View - All Data" : "Personal View"}
-            </Badge>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+              <Badge variant={isAdmin ? "default" : "secondary"} className="text-xs">
+                {isAdmin ? "Admin View - All Data" : "Personal View"}
+              </Badge>
+            </div>
+            <p className="text-muted-foreground mt-2">
+              Welcome back, {user?.name || "User"}! {isAdmin ? "You're viewing data from all users." : "Here's your personal data."}
+            </p>
           </div>
-          <p className="text-muted-foreground mt-2">
-            Welcome back, {user?.name || "User"}! {isAdmin ? "You're viewing data from all users." : "Here's your personal data."}
-          </p>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleRefresh}
+              className="shrink-0"
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
+            {isAdmin && (
+              <Link href="/dashboard/analytics" className="shrink-0">
+                <Button variant="outline" className="w-full sm:w-auto">
+                  View Analytics
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+            )}
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={handleRefresh}
-            className="shrink-0"
-          >
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
-          {isAdmin && (
-            <Link href="/dashboard/analytics" className="shrink-0">
-              <Button variant="outline" className="w-full sm:w-auto">
-                View Analytics
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
-          )}
+
+        {/* Quick Actions */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Link href="/dashboard/orders" className="flex items-center gap-2 p-3 border rounded-lg hover:bg-primary/5 hover:border-primary transition-colors">
+            <ShoppingCart className="h-5 w-5 text-primary shrink-0" />
+            <span className="text-sm font-medium">New Order</span>
+          </Link>
+          <Link href="/dashboard/customers" className="flex items-center gap-2 p-3 border rounded-lg hover:bg-primary/5 hover:border-primary transition-colors">
+            <Users className="h-5 w-5 text-primary shrink-0" />
+            <span className="text-sm font-medium">Customers</span>
+          </Link>
+          <Link href="/dashboard/daily-summary" className="flex items-center gap-2 p-3 border rounded-lg hover:bg-primary/5 hover:border-primary transition-colors">
+            <IndianRupee className="h-5 w-5 text-primary shrink-0" />
+            <span className="text-sm font-medium">Daily Summary</span>
+          </Link>
+          <Link href="/dashboard/reports" className="flex items-center gap-2 p-3 border rounded-lg hover:bg-primary/5 hover:border-primary transition-colors">
+            <TrendingUp className="h-5 w-5 text-primary shrink-0" />
+            <span className="text-sm font-medium">Reports</span>
+          </Link>
         </div>
       </div>
 
@@ -521,46 +543,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Quick Actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Quick Actions</CardTitle>
-          <CardDescription>Common tasks and shortcuts</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <Link
-              href="/dashboard/quick-order"
-              className="flex flex-col items-center justify-center p-4 border rounded-lg hover:bg-primary/5 hover:border-primary transition-colors"
-            >
-              <ShoppingCart className="h-8 w-8 text-primary mb-2" />
-              <span className="text-sm font-medium">Quick Order</span>
-            </Link>
-            <Link
-              href="/dashboard/customers"
-              className="flex flex-col items-center justify-center p-4 border rounded-lg hover:bg-primary/5 hover:border-primary transition-colors"
-            >
-              <Users className="h-8 w-8 text-primary mb-2" />
-              <span className="text-sm font-medium">Add Customer</span>
-            </Link>
-            <Link
-              href="/dashboard/daily-summary"
-              className="flex flex-col items-center justify-center p-4 border rounded-lg hover:bg-primary/5 hover:border-primary transition-colors"
-            >
-              <IndianRupee className="h-8 w-8 text-primary mb-2" />
-              <span className="text-sm font-medium">Daily Summary</span>
-            </Link>
-            <Link
-              href="/dashboard/reports"
-              className="flex flex-col items-center justify-center p-4 border rounded-lg hover:bg-primary/5 hover:border-primary transition-colors"
-            >
-              <TrendingUp className="h-8 w-8 text-primary mb-2" />
-              <span className="text-sm font-medium">View Reports</span>
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Revenue Details Dialog */}
       <Dialog open={isRevenueDialogOpen} onOpenChange={setIsRevenueDialogOpen}>

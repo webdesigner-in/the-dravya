@@ -18,7 +18,6 @@ import {
   MapPin,
   LogOut,
   Calculator,
-  Zap,
 } from "lucide-react";
 import {
   Sidebar,
@@ -49,7 +48,6 @@ const menuItems = [
     title: "Operations",
     items: [
       { title: "Orders", url: "/dashboard/orders", icon: ShoppingCart },
-      { title: "Quick Order", url: "/dashboard/quick-order", icon: Zap },
     ],
   },
   {

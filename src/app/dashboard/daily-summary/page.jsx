@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
-import { Button } from "@/components/ui/button";
+import React, { useState } from "react";
 import {
   Card,
   CardContent,
@@ -15,7 +14,6 @@ import {
   TrendingDown,
   Package,
   Calendar,
-  Printer,
 } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
 import { useDailySummary } from "@/hooks/useDailySummary";
@@ -34,7 +32,6 @@ export default function DailySummaryPage() {
   };
   
   const [selectedDate, setSelectedDate] = useState(getTodayDate());
-  const printRef = useRef();
 
   // Fetch daily summary data
   const { data, isLoading, error } = useDailySummary(selectedDate);
@@ -54,10 +51,6 @@ export default function DailySummaryPage() {
   const deliveredOrders = data?.deliveredOrders || [];
   const transactions = data?.transactions || [];
 
-  const handlePrint = () => {
-    window.print();
-  };
-
   if (!isAdmin) {
     return (
       <div className="flex justify-center items-center h-screen">
@@ -74,12 +67,6 @@ export default function DailySummaryPage() {
         title="Daily Cash Collection Summary"
         description="End-of-day reconciliation and cash summary"
         backHref="/dashboard"
-        actions={
-          <Button variant="outline" size="sm" onClick={handlePrint}>
-            <Printer className="h-4 w-4 mr-2" />
-            Print
-          </Button>
-        }
       />
 
       {/* Date Selector */}
@@ -106,7 +93,7 @@ export default function DailySummaryPage() {
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
         </div>
       ) : (
-        <div ref={printRef} className="space-y-6 print:space-y-4">
+        <div className="space-y-6">
           {/* Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card>
@@ -365,22 +352,6 @@ export default function DailySummaryPage() {
           </Card>
         </div>
       )}
-
-      <style jsx global>{`
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-          ${printRef.current} * {
-            visibility: visible;
-          }
-          ${printRef.current} {
-            position: absolute;
-            left: 0;
-            top: 0;
-          }
-        }
-      `}</style>
     </div>
   );
 }

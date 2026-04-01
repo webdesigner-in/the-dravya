@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,13 +9,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ArrowLeft, Download, Share2, Printer } from "lucide-react";
+import { ArrowLeft, Download, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function InvoiceDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const printRef = useRef();
   const [invoice, setInvoice] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -38,10 +37,6 @@ export default function InvoiceDetailPage() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handlePrint = () => {
-    window.print();
   };
 
   const handleDownloadPDF = async () => {
@@ -101,10 +96,6 @@ export default function InvoiceDetailPage() {
           Back
         </Button>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={handlePrint} className="flex-1 sm:flex-none">
-            <Printer className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">Print</span>
-          </Button>
           <Button variant="outline" onClick={handleDownloadPDF} className="flex-1 sm:flex-none">
             <Download className="mr-2 h-4 w-4" />
             <span className="hidden sm:inline">Download PDF</span>
@@ -118,7 +109,7 @@ export default function InvoiceDetailPage() {
       </div>
 
       {/* Invoice Content */}
-      <Card ref={printRef} className="w-full mx-auto">
+      <Card className="w-full mx-auto">
         <CardHeader className="border-b p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
             <div className="w-full sm:w-auto">
