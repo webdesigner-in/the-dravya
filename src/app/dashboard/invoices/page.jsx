@@ -48,8 +48,15 @@ export default function InvoicesPage() {
   const router = useRouter();
   const isAdmin = useAuthStore((state) => state.isAdmin());
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  
+
+  // Debounce search
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery), 400);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
   // React Query hooks with infinite scroll
   const { 
     data, 
@@ -60,7 +67,7 @@ export default function InvoicesPage() {
     isFetchingNextPage 
   } = useInvoices({ 
     status: statusFilter !== "all" ? statusFilter : undefined,
-    search: searchQuery || undefined
+    search: debouncedSearch || undefined
   });
   const updateInvoice = useUpdateInvoice();
   const deleteInvoice = useDeleteInvoice();
@@ -90,14 +97,14 @@ export default function InvoicesPage() {
       
       const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
       
-      if (isNearBottom && !isLoading && !isFetchingNextPage && hasNextPage && !searchQuery) {
+      if (isNearBottom && !isLoading && !isFetchingNextPage && hasNextPage && !debouncedSearch) {
         fetchNextPage();
       }
     };
 
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
-  }, [isLoading, isFetchingNextPage, hasNextPage, searchQuery, fetchNextPage]);
+  }, [isLoading, isFetchingNextPage, hasNextPage, debouncedSearch, fetchNextPage]);
 
   const getStatusColor = (status) => {
     const colors = {
@@ -358,7 +365,7 @@ export default function InvoicesPage() {
             )}
             
             {/* End of results indicator */}
-            {!hasNextPage && !searchQuery && invoices.length > 0 && (
+            {!hasNextPage && !debouncedSearch && invoices.length > 0 && (
               <div className="text-center py-4">
                 <p className="text-sm text-muted-foreground">No more invoices to load</p>
               </div>
