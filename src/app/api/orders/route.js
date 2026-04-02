@@ -43,18 +43,21 @@ export async function GET(request) {
     // Add simple filters - handle "null" string and guest orders for customer filter
     if (customerId) {
       if (customerId === 'null' || customerId === 'undefined') {
+        // Show all guest orders
         filter.orderType = 'guest';
-      } else if (customerId.startsWith('guest_')) {
-        // Guest key format: guest_<name>_<phone> — filter by guestInfo fields
-        const withoutPrefix = customerId.replace('guest_', '');
-        const lastUnderscoreIdx = withoutPrefix.lastIndexOf('_');
-        const guestName  = withoutPrefix.substring(0, lastUnderscoreIdx);
-        const guestPhone = withoutPrefix.substring(lastUnderscoreIdx + 1);
-
-        filter.orderType = 'guest';
-        if (guestName  && guestName  !== 'unknown') filter['guestInfo.name']  = guestName;
-        if (guestPhone && guestPhone !== 'nophone')  filter['guestInfo.phone'] = guestPhone;
+      } else if (/^[0-9a-f]{24}$/i.test(customerId)) {
+        // Valid 24-char ObjectId — the ledger passes guest order's own _id,
+        // and regular customer's _id. We need to distinguish them.
+        // We do this by checking orderType after the query using $or:
+        // match either customer = id OR (_id = id AND orderType = guest)
+        const mongoose = await import('mongoose');
+        const oid = new mongoose.default.Types.ObjectId(customerId);
+        filter.$or = [
+          { customer: oid },
+          { _id: oid, orderType: 'guest' },
+        ];
       } else {
+        // Non-ObjectId string — treat as customer field (shouldn't normally happen)
         filter.customer = customerId;
       }
     }
@@ -78,21 +81,26 @@ export async function GET(request) {
         
         const customerIds = matchingCustomers.map(c => c._id);
         
-        // Build search filter
-        if (customerIds.length > 0) {
-          filter.$or = [
-            { orderNumber: { $regex: `^${search.trim()}`, $options: 'i' } },
-            { customer: { $in: customerIds } },
-            { 'guestInfo.name': { $regex: search.trim(), $options: 'i' } },
-            { 'guestInfo.phone': { $regex: search.trim(), $options: 'i' } }
-          ];
+        // Build search filter — use $and if customer $or already set
+        const searchOr = customerIds.length > 0
+          ? [
+              { orderNumber: { $regex: `^${search.trim()}`, $options: 'i' } },
+              { customer: { $in: customerIds } },
+              { 'guestInfo.name':  { $regex: search.trim(), $options: 'i' } },
+              { 'guestInfo.phone': { $regex: search.trim(), $options: 'i' } },
+            ]
+          : [
+              { orderNumber: { $regex: `^${search.trim()}`, $options: 'i' } },
+              { 'guestInfo.name':  { $regex: search.trim(), $options: 'i' } },
+              { 'guestInfo.phone': { $regex: search.trim(), $options: 'i' } },
+            ];
+
+        if (filter.$or) {
+          // Already have a customer $or — combine with $and
+          filter.$and = [{ $or: filter.$or }, { $or: searchOr }];
+          delete filter.$or;
         } else {
-          // No customers found, search only order number and guest info
-          filter.$or = [
-            { orderNumber: { $regex: `^${search.trim()}`, $options: 'i' } },
-            { 'guestInfo.name': { $regex: search.trim(), $options: 'i' } },
-            { 'guestInfo.phone': { $regex: search.trim(), $options: 'i' } }
-          ];
+          filter.$or = searchOr;
         }
       } catch (searchError) {
         logger.error('Customer search error', searchError);

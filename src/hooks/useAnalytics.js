@@ -1,4 +1,4 @@
-import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/apiClient';
 
 export function useAnalytics(month = 'all') {
@@ -21,13 +21,10 @@ export function useDashboard() {
 
 export function useCustomerLedger(filters = {}) {
   const { month } = filters;
-  return useInfiniteQuery({
+  return useQuery({
     queryKey: ['customer-ledger', filters],
-    queryFn: ({ pageParam = 1 }) =>
-      api.get('/api/reports/customer-ledger', { params: { page: pageParam, limit: 20, ...(month && { month }) } }),
-    getNextPageParam: (lastPage, pages) =>
-      lastPage.pagination?.hasMore ? pages.length + 1 : undefined,
-    initialPageParam: 1,
+    queryFn: () =>
+      api.get('/api/reports/customer-ledger', { params: { limit: 500, ...(month && { month }) } }),
     staleTime: 5 * 60 * 1000,
   });
 }

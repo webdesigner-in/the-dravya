@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -125,20 +125,12 @@ export default function ReportsPage() {
   }, []);
   
   // React Query hooks with infinite scroll
-  const { 
-    data, 
-    isLoading, 
-    fetchNextPage, 
-    hasNextPage, 
-    isFetchingNextPage 
-  } = useCustomerLedger({ month: selectedMonth });
-  
-  // Flatten all pages into single array
-  const allLedger = data?.pages?.flatMap(page => page.ledger) || [];
-  const isAdmin = data?.pages?.[0]?.isAdmin || false;
-  const summary = data?.pages?.[0]?.summary || { totalRevenue: 0, totalPaid: 0, totalDue: 0, totalCustomers: 0 };
-  const pagination = data?.pages?.[0]?.pagination || { currentPage: 1, totalPages: 1, totalItems: 0, itemsPerPage: 20, hasMore: false };
-  
+  const { data, isLoading } = useCustomerLedger({ month: selectedMonth });
+
+  const allLedger = data?.ledger || [];
+  const isAdmin   = data?.isAdmin || false;
+  const summary   = data?.summary || { totalRevenue: 0, totalPaid: 0, totalDue: 0, totalCustomers: 0 };
+
   // Filter ledger based on search query
   const filteredLedger = searchQuery.trim() === ""
     ? allLedger
@@ -163,24 +155,6 @@ export default function ReportsPage() {
     const year = date.getFullYear();
     return `${day}-${month}-${year}`;
   };
-
-  // Infinite scroll implementation
-  useEffect(() => {
-    const handleScroll = () => {
-      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-      const windowHeight = window.innerHeight;
-      const documentHeight = document.documentElement.scrollHeight;
-      
-      const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
-      
-      if (isNearBottom && !isLoading && !isFetchingNextPage && hasNextPage && !searchQuery) {
-        fetchNextPage();
-      }
-    };
-
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [isLoading, isFetchingNextPage, hasNextPage, searchQuery, fetchNextPage]);
 
   return (
     <div className="space-y-2 p-2 sm:p-0 sm:space-y-4">
@@ -297,8 +271,8 @@ export default function ReportsPage() {
               <CardTitle className="text-xs sm:text-sm lg:text-base">Customer Ledger</CardTitle>
               <CardDescription className="text-[9px] sm:text-[10px]">
                 {searchQuery
-                  ? `${filteredLedger.length} of ${pagination.totalItems}`
-                  : `${pagination.totalItems} customer${pagination.totalItems !== 1 ? 's' : ''}`}
+                  ? `${filteredLedger.length} of ${allLedger.length}`
+                  : `${allLedger.length} customer${allLedger.length !== 1 ? 's' : ''}`}
               </CardDescription>
             </div>
             <div className="w-full sm:w-56">
@@ -419,21 +393,6 @@ export default function ReportsPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
-          )}
-          
-          {/* Loading more indicator */}
-          {isFetchingNextPage && (
-            <div className="flex justify-center py-1.5 sm:py-2">
-              <div className="animate-spin rounded-full h-3.5 w-3.5 sm:h-4 sm:w-4 border-b-2 border-gray-900"></div>
-              <span className="ml-1.5 text-[9px] sm:text-[10px] text-muted-foreground">Loading...</span>
-            </div>
-          )}
-          
-          {/* End of results indicator */}
-          {!hasNextPage && !searchQuery && filteredLedger.length > 0 && (
-            <div className="text-center py-1.5 sm:py-2">
-              <p className="text-[9px] sm:text-[10px] text-muted-foreground">End of list</p>
             </div>
           )}
         </CardContent>

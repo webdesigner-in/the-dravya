@@ -1,222 +1,210 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Order from '@/models/Order';
-import Customer from '@/models/Customer';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
 import { QUERY_LIMITS, QUERY_TIMEOUTS } from '@/lib/constants';
 
-// Configure route for production
-export const maxDuration = 30; // Maximum execution time in seconds
-export const dynamic = 'force-dynamic'; // Disable caching
+export const maxDuration = 30;
+export const dynamic = 'force-dynamic';
 
-// GET customer ledger report
 export async function GET(request) {
-  let authUser;
   try {
-    authUser = await getAuthUser();
-
+    const authUser = await getAuthUser();
     if (!authUser) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     await connectDB();
 
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page')) || 1;
-    const limit = parseInt(searchParams.get('limit')) || QUERY_LIMITS.DEFAULT_PAGE_SIZE;
-    const month = searchParams.get('month'); // Format: "YYYY-MM" or "all"
+    const page   = Math.max(1, parseInt(searchParams.get('page'))  || 1);
+    const limit  = Math.min(100, parseInt(searchParams.get('limit')) || QUERY_LIMITS.DEFAULT_PAGE_SIZE);
+    const month  = searchParams.get('month');
     const isAdmin = authUser.role === 'admin';
 
-    // Use aggregation pipeline to fetch all data in ONE query (fixes N+1 problem)
     const mongoose = await import('mongoose');
-    
-    const matchStage = isAdmin 
-      ? {} 
+
+    const matchStage = isAdmin
+      ? {}
       : { createdBy: new mongoose.default.Types.ObjectId(authUser.userId) };
 
-    // Add date filter if month is specified
     if (month && month !== 'all') {
       const [year, monthNum] = month.split('-');
-      const startDate = new Date(parseInt(year), parseInt(monthNum) - 1, 1);
-      const endDate = new Date(parseInt(year), parseInt(monthNum), 0, 23, 59, 59, 999);
-      
       matchStage.createdAt = {
-        $gte: startDate,
-        $lte: endDate
+        $gte: new Date(parseInt(year), parseInt(monthNum) - 1, 1),
+        $lte: new Date(parseInt(year), parseInt(monthNum), 0, 23, 59, 59, 999),
       };
     }
 
-    const ledgerData = await Order.aggregate([
-      {
-        $match: matchStage
-        // Include ALL orders (both customer and guest orders)
-      },
+    // Build the core aggregation pipeline (without pagination stages)
+    const corePipeline = [
+      { $match: matchStage },
+
+      // Only orders that have an invoice
       {
         $lookup: {
           from: 'invoices',
           localField: '_id',
           foreignField: 'order',
-          as: 'invoice'
-        }
+          as: 'invoice',
+        },
       },
-      {
-        // Only include orders that have invoices
-        $match: {
-          'invoice.0': { $exists: true }
-        }
-      },
+      { $match: { 'invoice.0': { $exists: true } } },
+
       {
         $addFields: {
-          // Group guest orders by name+phone so the same guest doesn't appear multiple times.
-          // For registered customers, group by customer ObjectId.
+          // Regular customer → group by customer ObjectId (one row per customer)
+          // Guest order      → group by the order's own _id (each order = its own row)
           groupKey: {
             $cond: {
               if: { $and: [{ $ne: ['$customer', null] }, { $ne: ['$orderType', 'guest'] }] },
               then: { $toString: '$customer' },
-              else: {
-                $concat: [
-                  'guest_',
-                  { $ifNull: ['$guestInfo.name', 'unknown'] },
-                  '_',
-                  { $ifNull: ['$guestInfo.phone', 'nophone'] }
-                ]
-              }
-            }
+              else: { $toString: '$_id' },
+            },
           },
-          isGuestOrder: { $eq: ['$orderType', 'guest'] },
+          isGuestOrder:       { $eq: ['$orderType', 'guest'] },
           invoiceTotalAmount: { $arrayElemAt: ['$invoice.totalAmount', 0] },
-          invoicePaidAmount:  { $arrayElemAt: ['$invoice.paidAmount',  0] }
-        }
+          invoicePaidAmount:  { $arrayElemAt: ['$invoice.paidAmount',  0] },
+        },
       },
+
       {
         $group: {
-          _id: '$groupKey',
-          isGuest: { $first: '$isGuestOrder' },
-          customerId: { $first: '$customer' },
+          _id:          '$groupKey',
+          isGuest:      { $first: '$isGuestOrder' },
+          customerId:   { $first: '$customer' },
           guestOrderId: { $first: '$_id' },
-          guestName: { $first: '$guestInfo.name' },
-          guestPhone: { $first: '$guestInfo.phone' },
-          totalOrders: { $sum: 1 },
-          totalAmount: { $sum: '$invoiceTotalAmount' }, // Sum invoice totals
-          paidAmount: { $sum: '$invoicePaidAmount' }, // Sum invoice payments
+          guestName:    { $first: '$guestInfo.name' },
+          guestPhone:   { $first: '$guestInfo.phone' },
+          totalOrders:  { $sum: 1 },
+          totalAmount:  { $sum: '$invoiceTotalAmount' },
+          paidAmount:   { $sum: '$invoicePaidAmount' },
           deliveredUnpaidOrders: {
             $sum: {
               $cond: [
                 {
                   $and: [
                     { $eq: ['$status', 'delivered'] },
-                    { $in: ['$paymentStatus', ['unpaid', 'partial']] }
-                  ]
+                    { $in: ['$paymentStatus', ['unpaid', 'partial']] },
+                  ],
                 },
                 1,
-                0
-              ]
-            }
-          }
-        }
+                0,
+              ],
+            },
+          },
+        },
       },
+
       {
         $lookup: {
           from: 'customers',
           localField: 'customerId',
           foreignField: '_id',
-          as: 'customerData'
-        }
+          as: 'customerData',
+        },
       },
+
       {
         $project: {
           customer: {
             $cond: {
               if: '$isGuest',
               then: {
-                _id: { $concat: ['guest_', { $ifNull: ['$guestName', 'unknown'] }, '_', { $ifNull: ['$guestPhone', 'nophone'] }] },
-                name: { $ifNull: ['$guestName', 'Guest Customer'] },
-                phone: { $ifNull: ['$guestPhone', 'N/A'] },
-                email: null,
-                isGuest: true
+                _id:     { $toString: '$guestOrderId' },
+                name:    { $ifNull: ['$guestName',  'Guest Customer'] },
+                phone:   { $ifNull: ['$guestPhone', ''] },
+                email:   null,
+                isGuest: true,
               },
               else: {
                 $cond: {
                   if: { $gt: [{ $size: '$customerData' }, 0] },
                   then: {
-                    _id: { $arrayElemAt: ['$customerData._id', 0] },
-                    name: { $arrayElemAt: ['$customerData.name', 0] },
-                    phone: { $arrayElemAt: ['$customerData.phone', 0] },
-                    email: { $arrayElemAt: ['$customerData.email', 0] },
-                    isGuest: false
+                    _id:     { $arrayElemAt: ['$customerData._id',   0] },
+                    name:    { $arrayElemAt: ['$customerData.name',  0] },
+                    phone:   { $arrayElemAt: ['$customerData.phone', 0] },
+                    email:   { $arrayElemAt: ['$customerData.email', 0] },
+                    isGuest: false,
                   },
                   else: {
-                    _id: '$customerId',
-                    name: 'Unknown Customer',
-                    phone: 'N/A',
-                    email: null,
-                    isGuest: false
-                  }
-                }
-              }
-            }
+                    _id:     '$customerId',
+                    name:    'Unknown Customer',
+                    phone:   '',
+                    email:   null,
+                    isGuest: false,
+                  },
+                },
+              },
+            },
           },
-          totalOrders: 1,
+          totalOrders:           1,
           deliveredUnpaidOrders: 1,
-          totalAmount: 1,
-          paidAmount: 1,
-          dueAmount: { $subtract: ['$totalAmount', '$paidAmount'] }
-        }
+          totalAmount:           1,
+          paidAmount:            1,
+          dueAmount: { $subtract: ['$totalAmount', '$paidAmount'] },
+        },
       },
-      {
-        $sort: { dueAmount: -1 }
-      }
-    ], { maxTimeMS: QUERY_TIMEOUTS.AGGREGATION });
 
-    const ledger = ledgerData;
-    
-    // Calculate totals
-    let totalRevenue = 0;
-    let totalPaid = 0;
-    let totalDue = 0;
-    
-    ledger.forEach(item => {
-      totalRevenue += item.totalAmount || 0;
-      totalPaid += item.paidAmount || 0;
-      totalDue += item.dueAmount || 0;
-    });
+      { $sort: { dueAmount: -1 } },
+    ];
 
-    // Only send summary to admins
-    const summary = isAdmin ? {
-      totalRevenue,
-      totalPaid,
-      totalDue,
-      totalCustomers: ledger.length,
-    } : null;
+    // Run count and paginated data in parallel
+    const [countResult, ledgerData] = await Promise.all([
+      Order.aggregate([
+        ...corePipeline,
+        { $count: 'total' },
+      ], { maxTimeMS: QUERY_TIMEOUTS.AGGREGATION }),
 
-    // Calculate pagination
-    const totalItems = ledger.length;
-    const totalPages = Math.ceil(totalItems / limit);
-    const skip = (page - 1) * limit;
-    const paginatedLedger = ledger.slice(skip, skip + limit);
+      Order.aggregate([
+        ...corePipeline,
+        { $skip:  (page - 1) * limit },
+        { $limit: limit },
+      ], { maxTimeMS: QUERY_TIMEOUTS.AGGREGATION }),
+    ]);
+
+    const totalItems = countResult[0]?.total || 0;
+
+    // Summary totals — only for admin, run a separate lightweight aggregation
+    let summary = null;
+    if (isAdmin) {
+      const totalsResult = await Order.aggregate([
+        ...corePipeline,
+        {
+          $group: {
+            _id:          null,
+            totalRevenue: { $sum: '$totalAmount' },
+            totalPaid:    { $sum: '$paidAmount' },
+            totalDue:     { $sum: '$dueAmount' },
+          },
+        },
+      ], { maxTimeMS: QUERY_TIMEOUTS.AGGREGATION });
+
+      const t = totalsResult[0] || {};
+      summary = {
+        totalRevenue:    t.totalRevenue    || 0,
+        totalPaid:       t.totalPaid       || 0,
+        totalDue:        t.totalDue        || 0,
+        totalCustomers:  totalItems,
+      };
+    }
 
     return NextResponse.json({
       success: true,
-      ledger: paginatedLedger,
+      ledger: ledgerData,
       summary,
       isAdmin,
       pagination: {
         currentPage: page,
-        totalPages,
+        totalPages:  Math.ceil(totalItems / limit),
         totalItems,
         itemsPerPage: limit,
-        hasMore: page < totalPages,
+        hasMore: page < Math.ceil(totalItems / limit),
       },
     });
   } catch (error) {
     const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to fetch customer ledger');
-    return NextResponse.json(
-      { error: errorMessage, details },
-      { status: statusCode }
-    );
+    return NextResponse.json({ error: errorMessage, details }, { status: statusCode });
   }
 }
