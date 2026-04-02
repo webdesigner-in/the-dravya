@@ -106,6 +106,7 @@ export default function OrdersPage() {
     items: [],
     notes: "",
     deliveryDate: "",
+    guestInfo: { name: "", phone: "", address: "" },
   });
   
   // Debounce search input
@@ -342,12 +343,17 @@ export default function OrdersPage() {
       })),
       notes: selectedOrder.notes || "",
       deliveryDate: selectedOrder.deliveryDate ? new Date(selectedOrder.deliveryDate).toISOString().split('T')[0] : "",
+      guestInfo: selectedOrder.orderType === "guest" ? {
+        name: selectedOrder.guestInfo?.name || "",
+        phone: selectedOrder.guestInfo?.phone || "",
+        address: selectedOrder.guestInfo?.address || "",
+      } : { name: "", phone: "", address: "" },
     });
   };
 
   const handleCancelEdit = () => {
     setIsEditMode(false);
-    setEditOrderData({ items: [], notes: "", deliveryDate: "" });
+    setEditOrderData({ items: [], notes: "", deliveryDate: "", guestInfo: { name: "", phone: "", address: "" } });
   };
 
   const handleAddItemToOrder = () => {
@@ -384,6 +390,7 @@ export default function OrdersPage() {
           items: validItems,
           notes: editOrderData.notes,
           deliveryDate: editOrderData.deliveryDate || null,
+          ...(selectedOrder.orderType === "guest" && { guestInfo: editOrderData.guestInfo }),
         },
       });
 
@@ -1949,7 +1956,7 @@ export default function OrdersPage() {
         setIsViewOrderDialogOpen(open);
         if (!open) {
           setIsEditMode(false);
-          setEditOrderData({ items: [], notes: "", deliveryDate: "" });
+          setEditOrderData({ items: [], notes: "", deliveryDate: "", guestInfo: { name: "", phone: "", address: "" } });
         }
       }}>
         <DialogContent className="w-[95vw] sm:w-full max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -1970,12 +1977,37 @@ export default function OrdersPage() {
                   </p>
                   {(selectedOrder.orderType === "guest") ? (
                     <>
-                      <p className="font-medium">{selectedOrder.guestInfo?.name || "Guest"}</p>
-                      {selectedOrder.guestInfo?.phone && (
-                        <p className="text-sm text-muted-foreground">{selectedOrder.guestInfo.phone}</p>
-                      )}
-                      {selectedOrder.guestInfo?.address && (
-                        <p className="text-xs text-muted-foreground mt-1">{selectedOrder.guestInfo.address}</p>
+                      {isEditMode ? (
+                        <div className="space-y-2 mt-1">
+                          <Input
+                            placeholder="Guest name"
+                            value={editOrderData.guestInfo.name}
+                            onChange={(e) => setEditOrderData({ ...editOrderData, guestInfo: { ...editOrderData.guestInfo, name: e.target.value } })}
+                            className="h-8 text-sm"
+                          />
+                          <Input
+                            placeholder="Phone number"
+                            value={editOrderData.guestInfo.phone}
+                            onChange={(e) => setEditOrderData({ ...editOrderData, guestInfo: { ...editOrderData.guestInfo, phone: e.target.value } })}
+                            className="h-8 text-sm"
+                          />
+                          <Input
+                            placeholder="Address"
+                            value={editOrderData.guestInfo.address}
+                            onChange={(e) => setEditOrderData({ ...editOrderData, guestInfo: { ...editOrderData.guestInfo, address: e.target.value } })}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                      ) : (
+                        <>
+                          <p className="font-medium">{selectedOrder.guestInfo?.name || "Guest"}</p>
+                          {selectedOrder.guestInfo?.phone && (
+                            <p className="text-sm text-muted-foreground">{selectedOrder.guestInfo.phone}</p>
+                          )}
+                          {selectedOrder.guestInfo?.address && (
+                            <p className="text-xs text-muted-foreground mt-1">{selectedOrder.guestInfo.address}</p>
+                          )}
+                        </>
                       )}
                       <Badge variant="secondary" className="mt-2 text-xs">Walk-in Order</Badge>
                     </>

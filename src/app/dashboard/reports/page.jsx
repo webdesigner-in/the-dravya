@@ -32,6 +32,78 @@ import Link from "next/link";
 import { useCustomerLedger } from "@/hooks/useAnalytics";
 import { useOrders } from "@/hooks/useOrders";
 
+// Isolated component so each expanded customer fetches its own orders independently
+function CustomerOrders({ customerId, ledger, formatDate }) {
+  const { data: ordersData, isLoading } = useOrders({ customer: customerId || undefined });
+  const orders = ordersData?.pages?.flatMap(page => page.orders) || [];
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-3">
+        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900" />
+      </div>
+    );
+  }
+  if (orders.length === 0) {
+    return <p className="text-center text-[9px] sm:text-[10px] text-muted-foreground py-3">No orders found</p>;
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-[9px] sm:text-[10px]">
+        <thead className="bg-muted">
+          <tr>
+            <th className="text-left p-1 sm:p-1.5 font-medium text-[8px] sm:text-[9px]">Order</th>
+            <th className="text-left p-1 sm:p-1.5 font-medium text-[8px] sm:text-[9px]">Date</th>
+            <th className="text-center p-1 sm:p-1.5 font-medium text-[8px] sm:text-[9px]">Status</th>
+            <th className="text-right p-1 sm:p-1.5 font-medium text-[8px] sm:text-[9px]">Total</th>
+            <th className="text-right p-1 sm:p-1.5 font-medium text-[8px] sm:text-[9px]">Due</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y">
+          {orders.map((order) => (
+            <tr key={order._id} className="hover:bg-muted/50">
+              <td className="p-1 sm:p-1.5">
+                <Link
+                  href={`/dashboard/orders?customer=${customerId}`}
+                  className="text-blue-600 hover:underline font-mono text-[8px] sm:text-[9px]"
+                >
+                  {order.orderNumber}
+                </Link>
+              </td>
+              <td className="p-1 sm:p-1.5 text-[8px] sm:text-[9px]">
+                {formatDate(order.deliveryDate || order.createdAt)}
+              </td>
+              <td className="p-1 sm:p-1.5 text-center">
+                <span className={`inline-flex items-center px-0.5 py-0.5 rounded text-[7px] sm:text-[8px] capitalize ${
+                  order.status === 'delivered'        ? 'bg-green-100 text-green-800' :
+                  order.status === 'cancelled'        ? 'bg-red-100 text-red-800' :
+                  order.status === 'out-for-delivery' ? 'bg-orange-100 text-orange-800' :
+                  'bg-blue-100 text-blue-800'
+                }`}>
+                  {order.status}
+                </span>
+              </td>
+              <td className="p-1 sm:p-1.5 text-right font-medium text-[8px] sm:text-[9px]">
+                ₹{parseFloat(order.finalAmount || 0).toFixed(2)}
+              </td>
+              <td className="p-1 sm:p-1.5 text-right text-red-600 font-medium text-[8px] sm:text-[9px]">
+                ₹{(parseFloat(order.finalAmount || 0) - parseFloat(order.paidAmount || 0)).toFixed(2)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot className="bg-muted font-semibold">
+          <tr>
+            <td colSpan="3" className="p-1 sm:p-1.5 text-right text-[8px] sm:text-[9px]">Totals:</td>
+            <td className="p-1 sm:p-1.5 text-right text-[8px] sm:text-[9px]">₹{ledger.totalAmount.toFixed(2)}</td>
+            <td className="p-1 sm:p-1.5 text-right text-[8px] sm:text-[9px] text-red-600">₹{ledger.dueAmount.toFixed(2)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  );
+}
+
 export default function ReportsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [expandedCustomer, setExpandedCustomer] = useState(null);
@@ -61,35 +133,11 @@ export default function ReportsPage() {
     isFetchingNextPage 
   } = useCustomerLedger({ month: selectedMonth });
   
-  // Fetch orders for expanded customer
-  // For guest customers, pass the guest order ID (which starts with "guest_")
-  // The Orders API will handle extracting the actual order ID
-  const { 
-    data: ordersData, 
-    isLoading: isLoadingOrders 
-  } = useOrders({ 
-    customer: expandedCustomer || undefined
-  });
-  
   // Flatten all pages into single array
   const allLedger = data?.pages?.flatMap(page => page.ledger) || [];
   const isAdmin = data?.pages?.[0]?.isAdmin || false;
-  const summary = data?.pages?.[0]?.summary || {
-    totalRevenue: 0,
-    totalPaid: 0,
-    totalDue: 0,
-    totalCustomers: 0,
-  };
-  const pagination = data?.pages?.[0]?.pagination || {
-    currentPage: 1,
-    totalPages: 1,
-    totalItems: 0,
-    itemsPerPage: 20,
-    hasMore: false,
-  };
-  
-  // Flatten orders from all pages
-  const customerOrders = ordersData?.pages?.flatMap(page => page.orders) || [];
+  const summary = data?.pages?.[0]?.summary || { totalRevenue: 0, totalPaid: 0, totalDue: 0, totalCustomers: 0 };
+  const pagination = data?.pages?.[0]?.pagination || { currentPage: 1, totalPages: 1, totalItems: 0, itemsPerPage: 20, hasMore: false };
   
   // Filter ledger based on search query
   const filteredLedger = searchQuery.trim() === ""
@@ -358,67 +406,11 @@ export default function ReportsPage() {
                         <tr>
                           <td colSpan="5" className="p-0">
                             <div className="bg-muted/30 p-1.5 sm:p-2">
-                              {isLoadingOrders ? (
-                                <div className="flex justify-center py-2 sm:py-3">
-                                  <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-gray-900"></div>
-                                </div>
-                              ) : customerOrders.length === 0 ? (
-                                <p className="text-center text-[9px] sm:text-[10px] text-muted-foreground py-2 sm:py-3">No orders found</p>
-                              ) : (
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-[9px] sm:text-[10px]">
-                                    <thead className="bg-muted">
-                                      <tr>
-                                        <th className="text-left p-1 sm:p-1.5 font-medium text-[8px] sm:text-[9px]">Order</th>
-                                        <th className="text-left p-1 sm:p-1.5 font-medium text-[8px] sm:text-[9px]">Date</th>
-                                        <th className="text-center p-1 sm:p-1.5 font-medium text-[8px] sm:text-[9px]">Status</th>
-                                        <th className="text-right p-1 sm:p-1.5 font-medium text-[8px] sm:text-[9px]">Total</th>
-                                        <th className="text-right p-1 sm:p-1.5 font-medium text-[8px] sm:text-[9px]">Due</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y">
-                                      {customerOrders.map((order) => (
-                                        <tr key={order._id} className="hover:bg-muted/50">
-                                          <td className="p-1 sm:p-1.5">
-                                            <Link 
-                                              href={`/dashboard/orders?customer=${ledger.customer._id}`}
-                                              className="text-blue-600 hover:underline font-mono text-[8px] sm:text-[9px]"
-                                            >
-                                              {order.orderNumber}
-                                            </Link>
-                                          </td>
-                                          <td className="p-1 sm:p-1.5 text-[8px] sm:text-[9px]">
-                                            {formatDate(order.deliveryDate || order.createdAt)}
-                                          </td>
-                                          <td className="p-1 sm:p-1.5 text-center">
-                                            <span className={`inline-flex items-center px-0.5 py-0.5 rounded text-[7px] sm:text-[8px] capitalize ${
-                                              order.status === 'delivered' ? 'bg-green-100 text-green-800' :
-                                              order.status === 'cancelled' ? 'bg-red-100 text-red-800' :
-                                              order.status === 'out-for-delivery' ? 'bg-orange-100 text-orange-800' :
-                                              'bg-blue-100 text-blue-800'
-                                            }`}>
-                                              {order.status}
-                                            </span>
-                                          </td>
-                                          <td className="p-1 sm:p-1.5 text-right font-medium text-[8px] sm:text-[9px]">
-                                            ₹{parseFloat(order.finalAmount || 0).toFixed(2)}
-                                          </td>
-                                          <td className="p-1 sm:p-1.5 text-right text-red-600 font-medium text-[8px] sm:text-[9px]">
-                                            ₹{(parseFloat(order.finalAmount || 0) - parseFloat(order.paidAmount || 0)).toFixed(2)}
-                                          </td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                    <tfoot className="bg-muted font-semibold">
-                                      <tr>
-                                        <td colSpan="3" className="p-1 sm:p-1.5 text-right text-[8px] sm:text-[9px]">Totals:</td>
-                                        <td className="p-1 sm:p-1.5 text-right text-[8px] sm:text-[9px]">₹{ledger.totalAmount.toFixed(2)}</td>
-                                        <td className="p-1 sm:p-1.5 text-right text-[8px] sm:text-[9px] text-red-600">₹{ledger.dueAmount.toFixed(2)}</td>
-                                      </tr>
-                                    </tfoot>
-                                  </table>
-                                </div>
-                              )}
+                              <CustomerOrders
+                                customerId={ledger.customer._id}
+                                ledger={ledger}
+                                formatDate={formatDate}
+                              />
                             </div>
                           </td>
                         </tr>

@@ -71,18 +71,25 @@ export async function GET(request) {
       },
       {
         $addFields: {
-          // Create a grouping key: use customer ID if exists, otherwise use order ID for guest
+          // Group guest orders by name+phone so the same guest doesn't appear multiple times.
+          // For registered customers, group by customer ObjectId.
           groupKey: {
             $cond: {
               if: { $and: [{ $ne: ['$customer', null] }, { $ne: ['$orderType', 'guest'] }] },
               then: { $toString: '$customer' },
-              else: { $concat: ['guest_', { $toString: '$_id' }] }
+              else: {
+                $concat: [
+                  'guest_',
+                  { $ifNull: ['$guestInfo.name', 'unknown'] },
+                  '_',
+                  { $ifNull: ['$guestInfo.phone', 'nophone'] }
+                ]
+              }
             }
           },
           isGuestOrder: { $eq: ['$orderType', 'guest'] },
-          // Get invoice amounts
           invoiceTotalAmount: { $arrayElemAt: ['$invoice.totalAmount', 0] },
-          invoicePaidAmount: { $arrayElemAt: ['$invoice.paidAmount', 0] }
+          invoicePaidAmount:  { $arrayElemAt: ['$invoice.paidAmount',  0] }
         }
       },
       {
@@ -126,7 +133,7 @@ export async function GET(request) {
             $cond: {
               if: '$isGuest',
               then: {
-                _id: { $concat: ['guest_', { $toString: '$guestOrderId' }] },
+                _id: { $concat: ['guest_', { $ifNull: ['$guestName', 'unknown'] }, '_', { $ifNull: ['$guestPhone', 'nophone'] }] },
                 name: { $ifNull: ['$guestName', 'Guest Customer'] },
                 phone: { $ifNull: ['$guestPhone', 'N/A'] },
                 email: null,

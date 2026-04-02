@@ -43,14 +43,18 @@ export async function GET(request) {
     // Add simple filters - handle "null" string and guest orders for customer filter
     if (customerId) {
       if (customerId === 'null' || customerId === 'undefined') {
-        // Filter for guest orders only
         filter.orderType = 'guest';
       } else if (customerId.startsWith('guest_')) {
-        // This is a guest order ID from customer ledger - extract the actual order ID
-        const guestOrderId = customerId.replace('guest_', '');
-        filter._id = guestOrderId;
+        // Guest key format: guest_<name>_<phone> — filter by guestInfo fields
+        const withoutPrefix = customerId.replace('guest_', '');
+        const lastUnderscoreIdx = withoutPrefix.lastIndexOf('_');
+        const guestName  = withoutPrefix.substring(0, lastUnderscoreIdx);
+        const guestPhone = withoutPrefix.substring(lastUnderscoreIdx + 1);
+
+        filter.orderType = 'guest';
+        if (guestName  && guestName  !== 'unknown') filter['guestInfo.name']  = guestName;
+        if (guestPhone && guestPhone !== 'nophone')  filter['guestInfo.phone'] = guestPhone;
       } else {
-        // Regular customer ID
         filter.customer = customerId;
       }
     }
