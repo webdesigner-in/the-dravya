@@ -1,66 +1,33 @@
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
+import api from '@/lib/apiClient';
 
-// Fetch analytics data
 export function useAnalytics(month = 'all') {
   return useQuery({
     queryKey: ['analytics', month],
-    queryFn: async () => {
-      const queryParams = new URLSearchParams({
-        ...(month && { month }),
-      });
-      const response = await fetch(`/api/analytics?${queryParams}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch analytics');
-      }
-      return response.json();
-    },
-    staleTime: 2 * 60 * 1000, // 2 minutes (analytics change frequently)
-    refetchInterval: 5 * 60 * 1000, // Auto-refetch every 5 minutes
+    queryFn: () => api.get('/api/analytics', { params: { month } }),
+    staleTime: 2 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
   });
 }
 
-// Fetch dashboard data
 export function useDashboard() {
   return useQuery({
     queryKey: ['dashboard'],
-    queryFn: async () => {
-      const response = await fetch('/api/dashboard');
-      if (!response.ok) {
-        throw new Error('Failed to fetch dashboard data');
-      }
-      return response.json();
-    },
-    staleTime: 3 * 60 * 1000, // 3 minutes
-    refetchInterval: 10 * 60 * 1000, // Auto-refetch every 10 minutes
+    queryFn: () => api.get('/api/dashboard'),
+    staleTime: 3 * 60 * 1000,
+    refetchInterval: 10 * 60 * 1000,
   });
 }
 
-// Fetch customer ledger with infinite scroll
 export function useCustomerLedger(filters = {}) {
   const { month } = filters;
-  
   return useInfiniteQuery({
     queryKey: ['customer-ledger', filters],
-    queryFn: async ({ pageParam = 1 }) => {
-      const queryParams = new URLSearchParams({
-        page: pageParam.toString(),
-        limit: '20',
-        ...(month && { month }),
-      });
-      
-      const response = await fetch(`/api/reports/customer-ledger?${queryParams}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch customer ledger');
-      }
-      return response.json();
-    },
-    getNextPageParam: (lastPage, pages) => {
-      if (lastPage.pagination && lastPage.pagination.hasMore) {
-        return pages.length + 1;
-      }
-      return undefined;
-    },
+    queryFn: ({ pageParam = 1 }) =>
+      api.get('/api/reports/customer-ledger', { params: { page: pageParam, limit: 20, ...(month && { month }) } }),
+    getNextPageParam: (lastPage, pages) =>
+      lastPage.pagination?.hasMore ? pages.length + 1 : undefined,
     initialPageParam: 1,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000,
   });
 }

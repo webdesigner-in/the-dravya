@@ -1,77 +1,34 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import api from '@/lib/apiClient';
 
 export const useAuthStore = create(
   persist(
     (set, get) => ({
       user: null,
-      isLoading: true,
+      isLoading: true, // Start true — always verify on mount
       isAuthenticated: false,
-      tokenExpiry: null, // Store token expiration time
-      
-      setUser: (user, tokenExpiry = null) => set({ 
-        user, 
-        isLoading: false, 
-        isAuthenticated: !!user,
-        tokenExpiry: tokenExpiry || Date.now() + (24 * 60 * 60 * 1000) // 24 hours from now
-      }),
-      
+      tokenExpiry: null,
+
       clearUser: () => {
-        set({ 
-          user: null, 
-          isLoading: false, 
-          isAuthenticated: false,
-          tokenExpiry: null
-        });
-        
-        // Clear persisted data
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('auth-storage');
-        }
+        set({ user: null, isLoading: false, isAuthenticated: false, tokenExpiry: null });
+        if (typeof window !== 'undefined') localStorage.removeItem('auth-storage');
       },
-      
-      // Check if token is expired
+
       isTokenExpired: () => {
         const { tokenExpiry } = get();
         if (!tokenExpiry) return true;
         return Date.now() > tokenExpiry;
       },
-      
-      // Check if user is authenticated and token is valid
-      isValidSession: () => {
-        const { isAuthenticated, isTokenExpired } = get();
-        return isAuthenticated && !isTokenExpired();
-      },
-      
+
       login: async (email, password) => {
         try {
           set({ isLoading: true });
-          
-          const response = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password }),
-          });
-
-          const data = await response.json();
-
-          if (!response.ok) {
-            throw new Error(data.error || 'Login failed');
-          }
-
-          // Set token expiry to 24 hours from now
+          const data = await api.post('/api/auth/login', { email, password });
           const tokenExpiry = Date.now() + (24 * 60 * 60 * 1000);
-          
-          set({ 
-            user: data.user, 
-            isLoading: false, 
-            isAuthenticated: true,
-            tokenExpiry
-          });
-          
-          // Fetch fresh user data to ensure all fields are loaded
+          // fetchUser will set the final state with all fields (upiId, businessName etc.)
+          set({ user: data.user, isAuthenticated: true, tokenExpiry });
           await get().fetchUser();
-          
           return { success: true, user: data.user };
         } catch (error) {
           set({ isLoading: false });
@@ -82,29 +39,9 @@ export const useAuthStore = create(
       register: async (userData) => {
         try {
           set({ isLoading: true });
-          
-          const response = await fetch('/api/auth/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(userData),
-          });
-
-          const data = await response.json();
-
-          if (!response.ok) {
-            throw new Error(data.error || 'Registration failed');
-          }
-
-          // Set token expiry to 24 hours from now
+          const data = await api.post('/api/auth/register', userData);
           const tokenExpiry = Date.now() + (24 * 60 * 60 * 1000);
-
-          set({ 
-            user: data.user, 
-            isLoading: false, 
-            isAuthenticated: true,
-            tokenExpiry
-          });
-          
+          set({ user: data.user, isLoading: false, isAuthenticated: true, tokenExpiry });
           return { success: true, user: data.user };
         } catch (error) {
           set({ isLoading: false });
@@ -114,104 +51,38 @@ export const useAuthStore = create(
 
       logout: async () => {
         try {
-          await fetch('/api/auth/logout', { method: 'POST' });
-        } catch (error) {
+          await api.post('/api/auth/logout');
+        } catch {
           // Even if logout API fails, clear local state
-          if (process.env.NODE_ENV === 'development') {
-            console.error('Logout API failed:', error);
-          }
         } finally {
-          // Always clear auth state and localStorage
-          set({ 
-            user: null, 
-            isLoading: false, 
-            isAuthenticated: false,
-            tokenExpiry: null
-          });
-          
-          // Clear persisted data
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem('auth-storage');
-          }
+          set({ user: null, isLoading: false, isAuthenticated: false, tokenExpiry: null });
+          if (typeof window !== 'undefined') localStorage.removeItem('auth-storage');
         }
-        
         return { success: true };
       },
 
       fetchUser: async () => {
+        set({ isLoading: true });
         try {
-          set({ isLoading: true });
-          
-          // Check if token is expired before making API call
           if (get().isTokenExpired()) {
-            // Token expired - clear everything
-            set({ 
-              user: null, 
-              isLoading: false, 
-              isAuthenticated: false,
-              tokenExpiry: null
-            });
-            
-            // Clear persisted data
-            if (typeof window !== 'undefined') {
-              localStorage.removeItem('auth-storage');
-            }
+            set({ user: null, isLoading: false, isAuthenticated: false, tokenExpiry: null });
+            if (typeof window !== 'undefined') localStorage.removeItem('auth-storage');
             return;
           }
-          
-          const response = await fetch('/api/auth/me');
-          
-          if (!response.ok) {
-            // Session expired or invalid - clear everything
-            set({ 
-              user: null, 
-              isLoading: false, 
-              isAuthenticated: false,
-              tokenExpiry: null
-            });
-            
-            // Clear persisted data
-            if (typeof window !== 'undefined') {
-              localStorage.removeItem('auth-storage');
-            }
-            return;
-          }
-
-          const data = await response.json();
-          
-          // Keep existing token expiry or set new one
+          const data = await api.get('/api/auth/me');
           const tokenExpiry = get().tokenExpiry || Date.now() + (24 * 60 * 60 * 1000);
-          
-          set({ 
-            user: data.user, 
-            isLoading: false, 
-            isAuthenticated: true,
-            tokenExpiry
-          });
-        } catch (error) {
-          // Network error - clear auth state
-          set({ 
-            user: null, 
-            isLoading: false, 
-            isAuthenticated: false,
-            tokenExpiry: null
-          });
-          
-          // Clear persisted data
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem('auth-storage');
-          }
+          set({ user: data.user, isLoading: false, isAuthenticated: true, tokenExpiry });
+        } catch {
+          set({ user: null, isLoading: false, isAuthenticated: false, tokenExpiry: null });
+          if (typeof window !== 'undefined') localStorage.removeItem('auth-storage');
         }
       },
-      
+
       updateUser: (updates) => {
         const currentUser = get().user;
-        if (currentUser) {
-          const updatedUser = { ...currentUser, ...updates };
-          set({ user: updatedUser });
-        }
+        if (currentUser) set({ user: { ...currentUser, ...updates } });
       },
-      
+
       // Helper getters
       getUserRole: () => get().user?.role,
       getUserEmail: () => get().user?.email,
@@ -222,34 +93,27 @@ export const useAuthStore = create(
     }),
     {
       name: 'auth-storage',
-      // Persist user and tokenExpiry
-      partialize: (state) => ({ 
+      partialize: (state) => ({
         user: state.user,
-        tokenExpiry: state.tokenExpiry
+        tokenExpiry: state.tokenExpiry,
       }),
-      // After rehydration, check if token is expired
       onRehydrateStorage: () => (state) => {
-        if (state) {
-          // Check if token is expired
-          const isExpired = state.tokenExpiry ? Date.now() > state.tokenExpiry : true;
-          
-          if (isExpired) {
-            // Token expired - clear everything
-            state.user = null;
-            state.isAuthenticated = false;
-            state.tokenExpiry = null;
-            
-            // Clear persisted data
-            if (typeof window !== 'undefined') {
-              localStorage.removeItem('auth-storage');
-            }
-          } else {
-            // Token still valid
-            state.isAuthenticated = !!state.user;
-          }
-          
-          state.isLoading = false;
+        if (!state) return;
+
+        const isExpired = state.tokenExpiry ? Date.now() > state.tokenExpiry : true;
+
+        if (isExpired) {
+          state.user = null;
+          state.isAuthenticated = false;
+          state.tokenExpiry = null;
+          if (typeof window !== 'undefined') localStorage.removeItem('auth-storage');
+        } else {
+          state.isAuthenticated = !!state.user;
         }
+
+        // Keep isLoading: true so AuthProvider always verifies with the server
+        // before rendering protected content
+        state.isLoading = true;
       },
     }
   )

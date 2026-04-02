@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/card";
 import { ArrowLeft, Download, Share2 } from "lucide-react";
 import { toast } from "sonner";
+import api from "@/lib/apiClient";
 
 export default function InvoiceDetailPage() {
   const params = useParams();
@@ -24,16 +25,11 @@ export default function InvoiceDetailPage() {
 
   const fetchInvoice = async () => {
     try {
-      const response = await fetch(`/api/invoices/${params.id}`);
-      if (response.ok) {
-        const data = await response.json();
-        setInvoice(data.invoice);
-      } else {
-        toast.error("Invoice not found");
-        router.push("/dashboard/invoices");
-      }
-    } catch (error) {
-      toast.error("Failed to fetch invoice");
+      const data = await api.get(`/api/invoices/${params.id}`);
+      setInvoice(data.invoice);
+    } catch {
+      toast.error("Invoice not found");
+      router.push("/dashboard/invoices");
     } finally {
       setIsLoading(false);
     }
@@ -50,25 +46,13 @@ export default function InvoiceDetailPage() {
   };
 
   const handleShareWhatsApp = async () => {
-    // Check for phone number in customer or guest info
     const hasPhone = invoice?.customer?.phone || invoice?.guestInfo?.phone;
-    
-    if (!hasPhone) {
-      toast.error("Phone number not available for this invoice");
-      return;
-    }
-
+    if (!hasPhone) { toast.error("Phone number not available for this invoice"); return; }
     try {
-      const response = await fetch(`/api/invoices/${params.id}/whatsapp`, {
-        method: "POST",
-      });
-
-      if (!response.ok) throw new Error("Failed to generate WhatsApp link");
-
-      const data = await response.json();
+      const data = await api.post(`/api/invoices/${params.id}/whatsapp`);
       window.open(data.whatsappUrl, "_blank");
       toast.success("Opening WhatsApp...");
-    } catch (error) {
+    } catch {
       toast.error("Failed to share on WhatsApp");
     }
   };
@@ -122,11 +106,11 @@ export default function InvoiceDetailPage() {
               </p>
             </div>
             <div className="text-left sm:text-right w-full sm:w-auto">
-              <h2 className="text-lg sm:text-xl font-bold">DRAVYA</h2>
-              <p className="text-xs sm:text-sm text-muted-foreground">Water Distribution</p>
-              <p className="text-xs sm:text-sm text-muted-foreground">DD Nagar Shatabdi Puram</p>
-              <p className="text-xs sm:text-sm text-muted-foreground">Gwalior - 474020</p>
-              <p className="text-xs sm:text-sm text-muted-foreground">Phone: +91 8349692297</p>
+              <h2 className="text-lg sm:text-xl font-bold">{process.env.NEXT_PUBLIC_BUSINESS_NAME}</h2>
+              <p className="text-xs sm:text-sm text-muted-foreground">{process.env.NEXT_PUBLIC_BUSINESS_TAGLINE}</p>
+              <p className="text-xs sm:text-sm text-muted-foreground">{process.env.NEXT_PUBLIC_BUSINESS_ADDRESS}</p>
+              <p className="text-xs sm:text-sm text-muted-foreground">{process.env.NEXT_PUBLIC_BUSINESS_CITY}{process.env.NEXT_PUBLIC_BUSINESS_PINCODE ? ` - ${process.env.NEXT_PUBLIC_BUSINESS_PINCODE}` : ''}</p>
+              {process.env.NEXT_PUBLIC_BUSINESS_PHONE && <p className="text-xs sm:text-sm text-muted-foreground">Phone: {process.env.NEXT_PUBLIC_BUSINESS_PHONE}</p>}
             </div>
           </div>
         </CardHeader>

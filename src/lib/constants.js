@@ -42,14 +42,6 @@ export const TOKEN_EXPIRY = {
   ACCESS_TOKEN_MS: 24 * 60 * 60 * 1000,
 };
 
-// Retry Configuration
-export const RETRY_CONFIG = {
-  MAX_ATTEMPTS: 3,              // Maximum retry attempts
-  INITIAL_DELAY_MS: 1000,       // Initial delay before retry
-  MAX_VERIFICATION_ATTEMPTS: 5, // Max verification attempts
-  VERIFICATION_DELAY_MS: 500,   // Delay between verifications
-};
-
 // Scroll Restoration
 export const SCROLL_CONFIG = {
   DEBOUNCE_MS: 150,             // Debounce scroll position save

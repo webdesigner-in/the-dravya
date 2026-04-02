@@ -3,7 +3,9 @@
  * Provides consistent error messages and status codes
  */
 export function handleApiError(error, defaultMessage = 'An error occurred') {
-  console.error('API Error:', error);
+  if (process.env.NODE_ENV !== 'production') {
+    console.error('API Error:', error);
+  }
   
   let errorMessage = defaultMessage;
   let statusCode = 500;

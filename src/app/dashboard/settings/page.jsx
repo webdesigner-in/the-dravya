@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import PageHeader from "@/components/layout/PageHeader";
 import { User, Lock, Mail, Phone, MapPin, Eye, EyeOff, QrCode } from "lucide-react";
 import { validateUPIId } from "@/lib/upi";
+import api from "@/lib/apiClient";
 
 export default function SettingsPage() {
   const user = useAuthStore((state) => state.user);
@@ -72,18 +73,7 @@ export default function SettingsPage() {
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/auth/update-profile", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(profileData),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to update profile");
-      }
-
+      const data = await api.put("/api/auth/update-profile", profileData);
       updateUser(data.user);
       toast.success("Profile updated successfully!");
     } catch (error) {
@@ -109,27 +99,12 @@ export default function SettingsPage() {
     setIsPasswordLoading(true);
 
     try {
-      const response = await fetch("/api/auth/change-password", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          currentPassword: passwordData.currentPassword,
-          newPassword: passwordData.newPassword,
-        }),
+      await api.put("/api/auth/change-password", {
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword,
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to change password");
-      }
-
       toast.success("Password changed successfully!");
-      setPasswordData({
-        currentPassword: "",
-        newPassword: "",
-        confirmPassword: "",
-      });
+      setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" });
     } catch (error) {
       toast.error(error.message);
     } finally {
@@ -164,30 +139,11 @@ export default function SettingsPage() {
     try {
       const payload = user?.upiId 
         ? { businessName: upiData.businessName.trim() }
-        : { 
-            upiId: upiData.upiId.trim(),
-            businessName: upiData.businessName.trim(),
-          };
+        : { upiId: upiData.upiId.trim(), businessName: upiData.businessName.trim() };
 
-      const response = await fetch("/api/auth/update-profile", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to update UPI settings");
-      }
-
+      const data = await api.put("/api/auth/update-profile", payload);
       updateUser(data.user);
-      
-      setUpiData({
-        upiId: data.user.upiId || "",
-        businessName: data.user.businessName || data.user.name || "",
-      });
-
+      setUpiData({ upiId: data.user.upiId || "", businessName: data.user.businessName || data.user.name || "" });
       toast.success(user?.upiId ? "Business name updated successfully!" : "UPI settings saved successfully!");
     } catch (error) {
       toast.error(error.message);

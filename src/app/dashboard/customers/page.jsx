@@ -70,22 +70,16 @@ export default function CustomersPage() {
   const [customerToDelete, setCustomerToDelete] = useState(null);
   const [editingCustomer, setEditingCustomer] = useState(null);
 
-  // Generate a unique fake phone number
-  const generateFakePhone = () => {
-    const randomDigits = Math.floor(10000000 + Math.random() * 90000000);
-    return `00${randomDigits}`;
-  };
-
   const [formData, setFormData] = useState({
     name: "",
     email: "",
-    phone: generateFakePhone(),
+    phone: "",
     alternatePhone: "",
     street: "",
     area: "",
-    city: "Gwalior",
-    state: "Madhya Pradesh",
-    pincode: "474005",
+    city: "",
+    state: "",
+    pincode: "",
     landmark: "",
     customerType: "residential",
     creditLimit: "0",
@@ -97,7 +91,6 @@ export default function CustomersPage() {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery);
     }, 500);
-
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
@@ -107,28 +100,33 @@ export default function CustomersPage() {
       const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
       const windowHeight = window.innerHeight;
       const documentHeight = document.documentElement.scrollHeight;
-      
       const isNearBottom = scrollTop + windowHeight >= documentHeight - 200;
-      
       if (isNearBottom && !isLoading && !isFetchingNextPage && hasNextPage && !searchQuery) {
         fetchNextPage();
       }
     };
-
     window.addEventListener('scroll', handleScroll);
     return () => window.removeEventListener('scroll', handleScroll);
   }, [isLoading, isFetchingNextPage, hasNextPage, searchQuery, fetchNextPage]);
 
-  // Generate new phone number when dialog opens for new customer
+  // Reset form when dialog opens for new customer
   useEffect(() => {
     if (isDialogOpen && !editingCustomer) {
-      setFormData(prev => ({
-        ...prev,
-        phone: generateFakePhone(),
-        city: "Gwalior",
-        state: "Madhya Pradesh",
-        pincode: "474005",
-      }));
+      setFormData({
+        name: "",
+        email: "",
+        phone: "",
+        alternatePhone: "",
+        street: "",
+        area: "",
+        city: "",
+        state: "",
+        pincode: "",
+        landmark: "",
+        customerType: "residential",
+        creditLimit: "0",
+        notes: "",
+      });
     }
   }, [isDialogOpen, editingCustomer]);
 
@@ -136,13 +134,13 @@ export default function CustomersPage() {
     setFormData({
       name: "",
       email: "",
-      phone: generateFakePhone(),
+      phone: "",
       alternatePhone: "",
       street: "",
       area: "",
-      city: "Gwalior",
-      state: "Madhya Pradesh",
-      pincode: "474005",
+      city: "",
+      state: "",
+      pincode: "",
       landmark: "",
       customerType: "residential",
       creditLimit: "0",
@@ -283,7 +281,7 @@ export default function CustomersPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, phone: e.target.value })
                     }
-                    placeholder="00XXXXXXXX"
+                    placeholder="Phone number"
                     required
                     maxLength={10}
                   />
@@ -410,11 +408,11 @@ export default function CustomersPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, city: e.target.value })
                     }
-                    placeholder="Gwalior"
+                    placeholder="City"
                   />
                   {!editingCustomer && (
                     <p className="text-xs text-muted-foreground">
-                      Default: Gwalior
+                      e.g. Gwalior
                     </p>
                   )}
                 </div>
@@ -431,7 +429,7 @@ export default function CustomersPage() {
                   />
                   {!editingCustomer && (
                     <p className="text-xs text-muted-foreground">
-                      Default: Madhya Pradesh
+                      e.g. Madhya Pradesh
                     </p>
                   )}
                 </div>
@@ -448,7 +446,7 @@ export default function CustomersPage() {
                   />
                   {!editingCustomer && (
                     <p className="text-xs text-muted-foreground">
-                      Default: 474005
+                      e.g. 474005
                     </p>
                   )}
                 </div>

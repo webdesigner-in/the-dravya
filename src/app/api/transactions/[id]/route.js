@@ -3,31 +3,19 @@ import connectDB from '@/lib/mongodb';
 import Transaction from '@/models/Transaction';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
-import { retryOperation, delay } from '@/lib/retryHelper';
 
-// GET single transaction
 export async function GET(request, { params }) {
-  let authUser;
   try {
-    const { id } = await params;
-    authUser = await getAuthUser();
-
+    const authUser = await getAuthUser();
     if (!authUser) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    // Only admins can view transactions
     if (authUser.role !== 'admin') {
-      return NextResponse.json(
-        { error: 'Access denied. Only administrators can view transactions.' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Access denied. Only administrators can view transactions.' }, { status: 403 });
     }
 
     await connectDB();
+    const { id } = await params;
 
     const transaction = await Transaction.findById(id)
       .populate('customer', 'name phone')
@@ -35,179 +23,75 @@ export async function GET(request, { params }) {
       .populate('createdBy', 'name');
 
     if (!transaction) {
-      return NextResponse.json(
-        { error: 'Transaction not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
     }
 
-    return NextResponse.json({
-      success: true,
-      transaction,
-    });
+    return NextResponse.json({ success: true, transaction });
   } catch (error) {
     const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to fetch transaction');
-    return NextResponse.json(
-      { error: errorMessage, details },
-      { status: statusCode }
-    );
+    return NextResponse.json({ error: errorMessage, details }, { status: statusCode });
   }
 }
 
-// PUT update transaction
 export async function PUT(request, { params }) {
-  let authUser;
   try {
-    const { id } = await params;
-    authUser = await getAuthUser();
-
+    const authUser = await getAuthUser();
     if (!authUser) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    // Only admins can update transactions
     if (authUser.role !== 'admin') {
-      return NextResponse.json(
-        { error: 'Unauthorized. Only admins can update transactions.' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Unauthorized. Only admins can update transactions.' }, { status: 403 });
     }
-
-    const body = await request.json();
-    const {
-      type,
-      category,
-      amount,
-      paymentMethod,
-      paymentStatus,
-      order,
-      customer,
-      description,
-      reference,
-      date,
-      notes,
-    } = body;
 
     await connectDB();
+    const { id } = await params;
+    const { type, category, amount, paymentMethod, paymentStatus, order, customer, description, reference, date, notes } = await request.json();
 
-    const transaction = await Transaction.findById(id);
+    const updateData = { type, category, amount, paymentMethod, paymentStatus, description, reference, date, notes };
+    updateData.order    = order    && order.trim()    !== '' ? order    : null;
+    updateData.customer = customer && customer.trim() !== '' ? customer : null;
+
+    const transaction = await Transaction.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true, runValidators: true }
+    )
+      .populate('customer', 'name phone')
+      .populate('order', 'orderNumber')
+      .populate('createdBy', 'name');
 
     if (!transaction) {
-      return NextResponse.json(
-        { error: 'Transaction not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
     }
 
-    // Prepare update data
-    const updateData = {
-      type,
-      category,
-      amount,
-      paymentMethod,
-      paymentStatus,
-      description,
-      reference,
-      date,
-      notes,
-    };
-
-    // Only add order and customer if they have valid values
-    if (order && order.trim() !== '') {
-      updateData.order = order;
-    } else {
-      updateData.order = null;
-    }
-    
-    if (customer && customer.trim() !== '') {
-      updateData.customer = customer;
-    } else {
-      updateData.customer = null;
-    }
-
-    // Update transaction with retry logic
-    const updatedTransaction = await retryOperation(async () => {
-      const updated = await Transaction.findByIdAndUpdate(
-        id,
-        updateData,
-        { returnDocument: 'after', runValidators: true }
-      )
-        .populate('customer', 'name phone')
-        .populate('order', 'orderNumber')
-        .populate('createdBy', 'name');
-
-      if (!updated) {
-        const error = new Error('Transaction not found');
-        error.status = 404;
-        throw error;
-      }
-
-      return updated;
-    }, 3, 500);
-
-    // Add small delay to ensure database consistency
-    await delay(300);
-
-    return NextResponse.json({
-      success: true,
-      transaction: updatedTransaction,
-    });
+    return NextResponse.json({ success: true, transaction });
   } catch (error) {
     const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to update transaction');
-    return NextResponse.json(
-      { error: errorMessage, details },
-      { status: statusCode }
-    );
+    return NextResponse.json({ error: errorMessage, details }, { status: statusCode });
   }
 }
 
-// DELETE transaction
 export async function DELETE(request, { params }) {
-  let authUser;
   try {
-    const { id } = await params;
-    authUser = await getAuthUser();
-
+    const authUser = await getAuthUser();
     if (!authUser) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    // Only admins can delete transactions
     if (authUser.role !== 'admin') {
-      return NextResponse.json(
-        { error: 'Unauthorized. Only admins can delete transactions.' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Unauthorized. Only admins can delete transactions.' }, { status: 403 });
     }
 
     await connectDB();
+    const { id } = await params;
 
-    const transaction = await Transaction.findById(id);
-
+    const transaction = await Transaction.findByIdAndDelete(id);
     if (!transaction) {
-      return NextResponse.json(
-        { error: 'Transaction not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
     }
 
-    await Transaction.findByIdAndDelete(id);
-
-    return NextResponse.json({
-      success: true,
-      message: 'Transaction deleted successfully',
-    });
+    return NextResponse.json({ success: true, message: 'Transaction deleted successfully' });
   } catch (error) {
     const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to delete transaction');
-    return NextResponse.json(
-      { error: errorMessage, details },
-      { status: statusCode }
-    );
+    return NextResponse.json({ error: errorMessage, details }, { status: statusCode });
   }
 }

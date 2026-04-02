@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
-import dbConnect from "@/lib/mongodb";
+import connectDB from "@/lib/mongodb";
 import Order from "@/models/Order";
+import Invoice from "@/models/Invoice";
 import Transaction from "@/models/Transaction";
 import { getAuthUser } from "@/lib/auth";
+import { handleApiError } from "@/lib/errorHandler";
 
 export async function GET(request) {
   try {
     const authUser = await getAuthUser();
-    
+
     if (!authUser) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -19,68 +21,89 @@ export async function GET(request) {
       );
     }
 
-    await dbConnect();
+    await connectDB();
 
     const { searchParams } = new URL(request.url);
     const date = searchParams.get("date") || new Date().toISOString().split("T")[0];
 
-    // Parse the date in local timezone to avoid timezone issues
-    const [year, month, day] = date.split('-').map(Number);
-    
-    // Create start and end of day in local timezone
+    const [year, month, day] = date.split("-").map(Number);
     const startOfDay = new Date(year, month - 1, day, 0, 0, 0, 0);
-    const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
+    const endOfDay   = new Date(year, month - 1, day, 23, 59, 59, 999);
 
-    // Fetch delivered orders for the selected date
-    // Use deliveryDate (scheduled delivery date) as the primary filter
-    // If deliveryDate is not set, fall back to createdAt (order creation date)
+    // ── 1. Orders DELIVERED on this date ─────────────────────────────────────
+    // Used to show what was dispatched/delivered, not what was collected
     const deliveredOrders = await Order.find({
       status: "delivered",
       $or: [
-        {
-          deliveryDate: {
-            $gte: startOfDay,
-            $lte: endOfDay,
-          },
-        },
-        {
-          deliveryDate: null,
-          createdAt: {
-            $gte: startOfDay,
-            $lte: endOfDay,
-          },
-        },
+        { deliveryDate: { $gte: startOfDay, $lte: endOfDay } },
+        { deliveryDate: null, updatedAt: { $gte: startOfDay, $lte: endOfDay } },
       ],
     })
       .populate("customer", "name phone")
       .populate("items.product", "name size")
-      .sort({ deliveryDate: -1, createdAt: -1 })
+      .sort({ deliveryDate: -1, updatedAt: -1 })
       .lean();
 
-    // Fetch transactions for the selected date
+    // ── 2. Cash COLLECTED on this date (from invoice payment history) ─────────
+    // This is the key change: we look at when payments were actually recorded,
+    // not when the order was delivered. An order delivered on Apr 2 but paid on
+    // Apr 10 will appear in the Apr 10 cash collection, not Apr 2.
+    const invoicesWithPayments = await Invoice.find({
+      "paymentHistory.date": { $gte: startOfDay, $lte: endOfDay },
+    })
+      .populate("customer", "name phone")
+      .populate("order", "orderNumber orderType guestInfo deliveryDate")
+      .lean();
+
+    // Extract only the payment entries that fall on this date
+    const cashCollections = [];
+    for (const invoice of invoicesWithPayments) {
+      const paymentsOnDate = invoice.paymentHistory.filter((p) => {
+        const pDate = new Date(p.date);
+        return pDate >= startOfDay && pDate <= endOfDay;
+      });
+      for (const payment of paymentsOnDate) {
+        cashCollections.push({
+          invoiceId:     invoice._id,
+          invoiceNumber: invoice.invoiceNumber,
+          customer:      invoice.customer,
+          guestInfo:     invoice.guestInfo,
+          orderNumber:   invoice.order?.orderNumber,
+          deliveryDate:  invoice.order?.deliveryDate,
+          amount:        payment.amount,
+          paymentMethod: payment.paymentMethod,
+          date:          payment.date,
+          notes:         payment.notes,
+        });
+      }
+    }
+
+    // ── 3. Expenses on this date ──────────────────────────────────────────────
     const transactions = await Transaction.find({
-      date: {
-        $gte: startOfDay,
-        $lte: endOfDay,
-      },
+      date: { $gte: startOfDay, $lte: endOfDay },
     })
       .populate("customer", "name")
       .populate("order", "orderNumber")
       .sort({ date: -1 })
       .lean();
 
-    // Calculate summary
+    // ── Summary calculations ──────────────────────────────────────────────────
+    // Revenue = value of orders delivered today
     const totalRevenue = deliveredOrders.reduce(
-      (sum, order) => sum + parseFloat(order.finalAmount || 0),
-      0
+      (sum, o) => sum + parseFloat(o.finalAmount || 0), 0
     );
 
-    const cashCollected = deliveredOrders.reduce(
-      (sum, order) => sum + parseFloat(order.paidAmount || 0),
-      0
+    // Cash collected = actual payments received today (regardless of delivery date)
+    const cashCollectedToday = cashCollections.reduce(
+      (sum, p) => sum + parseFloat(p.amount || 0), 0
     );
 
-    const creditGiven = totalRevenue - cashCollected;
+    // Credit given today = revenue from today's deliveries that was NOT collected today
+    // (may be collected on a future date)
+    const paidOnDelivery = deliveredOrders.reduce(
+      (sum, o) => sum + parseFloat(o.paidAmount || 0), 0
+    );
+    const creditGiven = Math.max(0, totalRevenue - paidOnDelivery);
 
     const expenses = transactions
       .filter((t) => t.type === "expense")
@@ -90,63 +113,66 @@ export async function GET(request) {
       .filter((t) => t.type === "expense" && t.category === "fuel")
       .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
 
-    const netCash = cashCollected - expenses;
+    // Net cash = what actually came in today minus what went out today
+    const netCash = cashCollectedToday - expenses;
 
-    const totalCartons = deliveredOrders.reduce((sum, order) => {
-      return (
-        sum +
-        (order.items?.reduce(
-          (itemSum, item) => itemSum + (item.quantity || 0),
-          0
-        ) || 0)
-      );
-    }, 0);
+    const totalCartons = deliveredOrders.reduce(
+      (sum, o) => sum + (o.items?.reduce((s, i) => s + (i.quantity || 0), 0) || 0),
+      0
+    );
 
     return NextResponse.json({
       success: true,
       date,
       summary: {
+        // Delivery-based (what went out today)
         totalRevenue,
-        cashCollected,
-        creditGiven,
-        expenses,
-        fuelExpense,
-        netCash,
         deliveredOrdersCount: deliveredOrders.length,
         totalCartons,
-        collectionRate: totalRevenue > 0 ? (cashCollected / totalRevenue) * 100 : 0,
+        creditGiven,
+        paidOnDelivery,
+        // Collection-based (what came in today)
+        cashCollectedToday,
+        cashCollectionsCount: cashCollections.length,
+        // Expenses
+        expenses,
+        fuelExpense,
+        // Net
+        netCash,
+        collectionRate: totalRevenue > 0 ? (paidOnDelivery / totalRevenue) * 100 : 0,
       },
-      deliveredOrders: deliveredOrders.map((order) => ({
-        _id: order._id,
-        orderNumber: order.orderNumber,
-        customer: order.customer,
-        guestInfo: order.guestInfo,
-        orderType: order.orderType,
-        finalAmount: order.finalAmount,
-        paidAmount: order.paidAmount,
-        paymentTerms: order.paymentTerms,
-        items: order.items,
-        deliveryDate: order.deliveryDate,
-        createdAt: order.createdAt,
+      // Orders delivered today
+      deliveredOrders: deliveredOrders.map((o) => ({
+        _id:          o._id,
+        orderNumber:  o.orderNumber,
+        customer:     o.customer,
+        guestInfo:    o.guestInfo,
+        orderType:    o.orderType,
+        finalAmount:  o.finalAmount,
+        paidAmount:   o.paidAmount,
+        paymentMethod: o.paymentMethod,
+        items:        o.items,
+        deliveryDate: o.deliveryDate,
+        createdAt:    o.createdAt,
       })),
+      // Cash actually collected today (may be for orders delivered on earlier dates)
+      cashCollections,
+      // Expenses today
       transactions: transactions.map((t) => ({
-        _id: t._id,
+        _id:              t._id,
         transactionNumber: t.transactionNumber,
-        type: t.type,
-        category: t.category,
-        amount: t.amount,
-        description: t.description,
-        paymentMethod: t.paymentMethod,
-        customer: t.customer,
-        order: t.order,
-        date: t.date,
+        type:             t.type,
+        category:         t.category,
+        amount:           t.amount,
+        description:      t.description,
+        paymentMethod:    t.paymentMethod,
+        customer:         t.customer,
+        order:            t.order,
+        date:             t.date,
       })),
     });
   } catch (error) {
-    console.error("Daily summary error:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch daily summary" },
-      { status: 500 }
-    );
+    const { error: errorMessage, statusCode, details } = handleApiError(error, "Failed to fetch daily summary");
+    return NextResponse.json({ error: errorMessage, details }, { status: statusCode });
   }
 }

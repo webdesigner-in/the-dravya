@@ -1,102 +1,92 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Invoice from '@/models/Invoice';
-import Customer from '@/models/Customer';
-import Order from '@/models/Order';
-import User from '@/models/User';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
+import { QUERY_LIMITS, QUERY_TIMEOUTS } from '@/lib/constants';
 
-// GET all invoices
 export async function GET(request) {
   let authUser;
   try {
     authUser = await getAuthUser();
 
     if (!authUser) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     await connectDB();
 
     const { searchParams } = new URL(request.url);
-    const customerId = searchParams.get('customer');
-    const orderId = searchParams.get('order');
-    const status = searchParams.get('status');
-    const search = searchParams.get('search');
-    const page = parseInt(searchParams.get('page')) || 1;
-    const limit = parseInt(searchParams.get('limit')) || 20;
+    const customerId   = searchParams.get('customer');
+    const orderId      = searchParams.get('order');
+    const status       = searchParams.get('status');
+    const search       = searchParams.get('search');
+    const page         = Math.max(1, parseInt(searchParams.get('page')) || 1);
+    const limit        = Math.min(100, parseInt(searchParams.get('limit')) || 20);
+    const skip         = (page - 1) * limit;
 
-    // Admin sees all invoices, others see only their own
-    let filter = {};
-    
+    const filter = {};
+
+    // Non-admins only see invoices they created
     if (authUser.role !== 'admin') {
-      // First, get all orders created by the logged-in user
-      const userOrders = await Order.find({ createdBy: authUser.userId }).select('_id');
-      const userOrderIds = userOrders.map(order => order._id);
-      
-      // Filter invoices to only include those from user's orders
-      filter.order = { $in: userOrderIds };
+      filter.createdBy = authUser.userId;
     }
 
-    if (customerId) {
-      filter.customer = customerId;
+    if (customerId) filter.customer = customerId;
+    if (orderId)    filter.order    = orderId;
+    if (status && status !== 'all') filter.status = status;
+
+    // DB-level search — no in-memory filtering
+    if (search && search.trim()) {
+      const s = search.trim();
+
+      // Find matching customers and orders in parallel
+      const [matchingCustomers, matchingOrders] = await Promise.all([
+        (await import('@/models/Customer')).default
+          .find({ $or: [{ name: { $regex: s, $options: 'i' } }, { phone: { $regex: s, $options: 'i' } }] })
+          .select('_id').lean().limit(QUERY_LIMITS.SEARCH_RESULTS).maxTimeMS(QUERY_TIMEOUTS.FAST),
+        Order.find({ orderNumber: { $regex: `^${s}`, $options: 'i' } })
+          .select('_id').lean().limit(QUERY_LIMITS.SEARCH_RESULTS).maxTimeMS(QUERY_TIMEOUTS.FAST),
+      ]);
+
+      const searchClauses = [
+        { invoiceNumber: { $regex: s, $options: 'i' } },
+        { 'guestInfo.name': { $regex: s, $options: 'i' } },
+        { 'guestInfo.phone': { $regex: s, $options: 'i' } },
+      ];
+      if (matchingCustomers.length) searchClauses.push({ customer: { $in: matchingCustomers.map(c => c._id) } });
+      if (matchingOrders.length)    searchClauses.push({ order:    { $in: matchingOrders.map(o => o._id) } });
+
+      // Merge with existing filter using $and so other filters still apply
+      filter.$or = searchClauses;
     }
 
-    if (orderId) {
-      filter.order = orderId;
-    }
-
-    if (status && status !== 'all') {
-      filter.status = status;
-    }
-
-    const invoices = await Invoice.find(filter)
-      .populate('customer', 'name phone email address')
-      .populate('order', 'orderNumber orderType guestInfo')
-      .populate('createdBy', 'name email')
-      .sort({ createdAt: -1 });
-
-    // Search filter
-    let filteredInvoices = invoices;
-    if (search) {
-      const searchLower = search.toLowerCase();
-      filteredInvoices = invoices.filter(
-        (invoice) =>
-          invoice.invoiceNumber.toLowerCase().includes(searchLower) ||
-          invoice.customer?.name.toLowerCase().includes(searchLower) ||
-          invoice.customer?.phone.includes(search) ||
-          invoice.order?.orderNumber.toLowerCase().includes(searchLower) ||
-          invoice.guestInfo?.name?.toLowerCase().includes(searchLower) ||
-          invoice.guestInfo?.phone?.includes(search)
-      );
-    }
-
-    // Calculate pagination
-    const totalInvoices = filteredInvoices.length;
-    const totalPages = Math.ceil(totalInvoices / limit);
-    const skip = (page - 1) * limit;
-    const paginatedInvoices = filteredInvoices.slice(skip, skip + limit);
+    const [invoices, total] = await Promise.all([
+      Invoice.find(filter)
+        .populate('customer', 'name phone email address')
+        .populate('order', 'orderNumber orderType guestInfo')
+        .populate('createdBy', 'name email')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean()
+        .maxTimeMS(QUERY_TIMEOUTS.COMPLEX),
+      Invoice.countDocuments(filter).maxTimeMS(QUERY_TIMEOUTS.NORMAL),
+    ]);
 
     return NextResponse.json({
       success: true,
-      invoices: paginatedInvoices,
+      invoices,
       pagination: {
         currentPage: page,
-        totalPages,
-        totalItems: totalInvoices,
+        totalPages: Math.ceil(total / limit),
+        totalItems: total,
         itemsPerPage: limit,
-        hasMore: page < totalPages,
+        hasMore: page < Math.ceil(total / limit),
       },
     });
   } catch (error) {
     const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to fetch invoices');
-    return NextResponse.json(
-      { error: errorMessage, details },
-      { status: statusCode }
-    );
+    return NextResponse.json({ error: errorMessage, details }, { status: statusCode });
   }
 }

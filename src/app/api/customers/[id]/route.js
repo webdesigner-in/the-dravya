@@ -3,201 +3,93 @@ import connectDB from '@/lib/mongodb';
 import Customer from '@/models/Customer';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
-import { retryOperation, delay } from '@/lib/retryHelper';
-import cache from '@/lib/cache';
 
-// GET single customer
 export async function GET(request, { params }) {
-  let authUser;
   try {
-    authUser = await getAuthUser();
-
+    const authUser = await getAuthUser();
     if (!authUser) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     await connectDB();
-
     const { id } = await params;
-    const customer = await Customer.findById(id).populate(
-      'assignedDistributor',
-      'name email'
-    );
 
+    const customer = await Customer.findById(id).populate('assignedDistributor', 'name email');
     if (!customer) {
-      return NextResponse.json(
-        { error: 'Customer not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
     }
 
-    return NextResponse.json({
-      success: true,
-      customer,
-    });
+    return NextResponse.json({ success: true, customer });
   } catch (error) {
     const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to fetch customer');
-    return NextResponse.json(
-      { error: errorMessage, details },
-      { status: statusCode }
-    );
+    return NextResponse.json({ error: errorMessage, details }, { status: statusCode });
   }
 }
 
-// PUT update customer
 export async function PUT(request, { params }) {
-  let authUser;
   try {
-    authUser = await getAuthUser();
-
+    const authUser = await getAuthUser();
     if (!authUser) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    // Only admins can update customers
     if (authUser.role !== 'admin') {
-      return NextResponse.json(
-        { error: 'Unauthorized. Only admins can update customers.' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Unauthorized. Only admins can update customers.' }, { status: 403 });
     }
 
     await connectDB();
-
     const { id } = await params;
     const body = await request.json();
 
-    // Get the existing customer
     const existingCustomer = await Customer.findById(id);
     if (!existingCustomer) {
-      return NextResponse.json(
-        { error: 'Customer not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
     }
 
-    // If phone number is being changed, check if the new phone already exists
     if (body.phone && body.phone !== existingCustomer.phone) {
-      const phoneExists = await Customer.findOne({ 
-        phone: body.phone,
-        _id: { $ne: id } // Exclude current customer
-      });
-      
+      const phoneExists = await Customer.findOne({ phone: body.phone, _id: { $ne: id } });
       if (phoneExists) {
-        return NextResponse.json(
-          { error: 'A customer with this phone number already exists' },
-          { status: 409 }
-        );
+        return NextResponse.json({ error: 'A customer with this phone number already exists' }, { status: 409 });
       }
     }
 
-    // Update customer with retry logic
-    const customer = await retryOperation(async () => {
-      const updatedCustomer = await Customer.findByIdAndUpdate(
-        id,
-        { $set: body },
-        { runValidators: true, returnDocument: 'after' }
-      ).populate('assignedDistributor', 'name email');
+    const customer = await Customer.findByIdAndUpdate(
+      id,
+      { $set: body },
+      { new: true, runValidators: true }
+    ).populate('assignedDistributor', 'name email');
 
-      if (!updatedCustomer) {
-        const error = new Error('Customer not found');
-        error.status = 404;
-        throw error;
-      }
+    if (!customer) {
+      return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
+    }
 
-      return updatedCustomer;
-    }, 3, 500);
-
-    // Add small delay to ensure database consistency
-    await delay(300);
-
-    // Invalidate customers cache
-    const customerTypesToClear = ['all', customer.customerType];
-    const activeStatesToClear = ['all', 'true', 'false'];
-    
-    customerTypesToClear.forEach(type => {
-      activeStatesToClear.forEach(active => {
-        for (let page = 1; page <= 10; page++) {
-          cache.delete(`customers_${type}_${active}_${page}_20`);
-          cache.delete(`customers_${type}_${active}_${page}_50`);
-        }
-      });
-    });
-
-    return NextResponse.json({
-      success: true,
-      customer,
-    });
+    return NextResponse.json({ success: true, customer });
   } catch (error) {
     const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to update customer');
-    return NextResponse.json(
-      { error: errorMessage, details },
-      { status: statusCode }
-    );
+    return NextResponse.json({ error: errorMessage, details }, { status: statusCode });
   }
 }
 
-// DELETE customer
 export async function DELETE(request, { params }) {
-  let authUser;
   try {
-    authUser = await getAuthUser();
-
+    const authUser = await getAuthUser();
     if (!authUser) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    // Only admins can delete customers
     if (authUser.role !== 'admin') {
-      return NextResponse.json(
-        { error: 'Unauthorized. Only admins can delete customers.' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Unauthorized. Only admins can delete customers.' }, { status: 403 });
     }
 
     await connectDB();
-
     const { id } = await params;
-    const customer = await Customer.findByIdAndDelete(id);
 
+    const customer = await Customer.findByIdAndDelete(id);
     if (!customer) {
-      return NextResponse.json(
-        { error: 'Customer not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
     }
 
-    // Invalidate customers cache
-    const customerTypesToClear = ['all', customer.customerType];
-    const activeStatesToClear = ['all', 'true', 'false'];
-    
-    customerTypesToClear.forEach(type => {
-      activeStatesToClear.forEach(active => {
-        for (let page = 1; page <= 10; page++) {
-          cache.delete(`customers_${type}_${active}_${page}_20`);
-          cache.delete(`customers_${type}_${active}_${page}_50`);
-        }
-      });
-    });
-
-    return NextResponse.json({
-      success: true,
-      message: 'Customer deleted successfully',
-    });
+    return NextResponse.json({ success: true, message: 'Customer deleted successfully' });
   } catch (error) {
     const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to delete customer');
-    return NextResponse.json(
-      { error: errorMessage, details },
-      { status: statusCode }
-    );
+    return NextResponse.json({ error: errorMessage, details }, { status: statusCode });
   }
 }

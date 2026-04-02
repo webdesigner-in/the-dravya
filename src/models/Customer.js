@@ -49,10 +49,6 @@ const CustomerSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
-    outstandingBalance: {
-      type: Number,
-      default: 0,
-    },
     isActive: {
       type: Boolean,
       default: true,
@@ -76,7 +72,6 @@ CustomerSchema.index({ email: 1 }, { sparse: true });
 CustomerSchema.index({ isActive: 1, customerType: 1 });
 CustomerSchema.index({ assignedDistributor: 1, isActive: 1 });
 CustomerSchema.index({ createdAt: -1 });
-CustomerSchema.index({ outstandingBalance: 1 });
 
 // Text index for search
 CustomerSchema.index({ name: 'text', phone: 'text' });

@@ -355,8 +355,7 @@ Content-Type: application/json
 {
   "name": "John Doe",
   "email": "john@example.com",
-  "password": "password123",
-  "role": "distributor"
+  "password": "password123"
 }
 ```
 
@@ -493,7 +492,6 @@ Response:
   },
   customerType: String (residential/commercial/industrial),
   creditLimit: Number,
-  outstandingBalance: Number,
   isActive: Boolean,
   createdAt: Date,
   updatedAt: Date

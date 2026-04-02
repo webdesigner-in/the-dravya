@@ -4,31 +4,20 @@ import User from '@/models/User';
 import { getAuthUser } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
 import { handleApiError } from '@/lib/errorHandler';
-import { retryOperation, delay } from '@/lib/retryHelper';
 
 export async function GET(request, { params }) {
-  let authUser;
   try {
-    authUser = await getAuthUser();
-
+    const authUser = await getAuthUser();
     if (!authUser || authUser.role !== 'admin') {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
     await connectDB();
-
     const { id } = await params;
 
     const user = await User.findById(id).select('-password');
-
     if (!user) {
-      return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
     return NextResponse.json({
@@ -44,87 +33,43 @@ export async function GET(request, { params }) {
     });
   } catch (error) {
     const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to fetch user');
-    return NextResponse.json(
-      { error: errorMessage, details },
-      { status: statusCode }
-    );
+    return NextResponse.json({ error: errorMessage, details }, { status: statusCode });
   }
 }
 
 export async function PUT(request, { params }) {
-  let authUser;
   try {
-    authUser = await getAuthUser();
-
+    const authUser = await getAuthUser();
     if (!authUser || authUser.role !== 'admin') {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
     await connectDB();
-
     const { id } = await params;
-    const body = await request.json();
-    const { name, email, role, phone, address, password } = body;
+    const { name, email, role, phone, address, password } = await request.json();
 
-    // Validate required fields
     if (!name || !email || !role) {
-      return NextResponse.json(
-        { error: 'Name, email, and role are required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Name, email, and role are required' }, { status: 400 });
     }
 
-    // Check if email is already taken by another user
     const existingUser = await User.findOne({ email, _id: { $ne: id } });
     if (existingUser) {
-      return NextResponse.json(
-        { error: 'Email already in use by another user' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Email already in use by another user' }, { status: 400 });
     }
 
-    const updateData = {
-      name,
-      email,
-      role,
-      phone: phone || '',
-      address: address || '',
-    };
+    const updateData = { name, email, role, phone: phone || '', address: address || '' };
 
-    // Only update password if provided
     if (password && password.trim() !== '') {
-      if (password.length < 6) {
-        return NextResponse.json(
-          { error: 'Password must be at least 6 characters' },
-          { status: 400 }
-        );
+      if (password.length < 8) {
+        return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 });
       }
-      const hashedPassword = await bcrypt.hash(password, 10);
-      updateData.password = hashedPassword;
+      updateData.password = await bcrypt.hash(password, 10);
     }
 
-    // Update user with retry logic
-    const user = await retryOperation(async () => {
-      const updatedUser = await User.findByIdAndUpdate(
-        id,
-        updateData,
-        { returnDocument: 'after', runValidators: true }
-      ).select('-password');
-
-      if (!updatedUser) {
-        const error = new Error('User not found');
-        error.status = 404;
-        throw error;
-      }
-
-      return updatedUser;
-    }, 3, 500);
-
-    // Add small delay to ensure database consistency
-    await delay(300);
+    const user = await User.findByIdAndUpdate(id, updateData, { new: true, runValidators: true }).select('-password');
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
 
     return NextResponse.json({
       success: true,
@@ -140,55 +85,32 @@ export async function PUT(request, { params }) {
     });
   } catch (error) {
     const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to update user');
-    return NextResponse.json(
-      { error: errorMessage, details },
-      { status: statusCode }
-    );
+    return NextResponse.json({ error: errorMessage, details }, { status: statusCode });
   }
 }
 
 export async function DELETE(request, { params }) {
-  let authUser;
   try {
-    authUser = await getAuthUser();
-
+    const authUser = await getAuthUser();
     if (!authUser || authUser.role !== 'admin') {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
     await connectDB();
-
     const { id } = await params;
 
-    // Prevent admin from deleting themselves
     if (authUser.userId === id) {
-      return NextResponse.json(
-        { error: 'You cannot delete your own account' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'You cannot delete your own account' }, { status: 400 });
     }
 
     const user = await User.findByIdAndDelete(id);
-
     if (!user) {
-      return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    return NextResponse.json({
-      success: true,
-      message: 'User deleted successfully',
-    });
+    return NextResponse.json({ success: true, message: 'User deleted successfully' });
   } catch (error) {
     const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to delete user');
-    return NextResponse.json(
-      { error: errorMessage, details },
-      { status: statusCode }
-    );
+    return NextResponse.json({ error: errorMessage, details }, { status: statusCode });
   }
 }

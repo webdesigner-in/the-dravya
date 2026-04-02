@@ -209,11 +209,11 @@ function generateInvoiceHTML(invoice) {
       <p><strong>Order Number:</strong> ${invoice.order?.orderNumber || 'N/A'}</p>
     </div>
     <div class="company-info">
-      <h2>DRAVYA</h2>
-      <p>Water Distribution</p>
-      <p>DD Nagar Shatabdi Puram</p>
-      <p>Gwalior - 474020</p>
-      <p>Phone: +91 8349692297</p>
+      <h2>${process.env.BUSINESS_NAME}</h2>
+      <p>${process.env.BUSINESS_TAGLINE}</p>
+      <p>${process.env.BUSINESS_ADDRESS}</p>
+      <p>${process.env.BUSINESS_CITY}${process.env.BUSINESS_PINCODE ? ` - ${process.env.BUSINESS_PINCODE}` : ''}</p>
+      ${process.env.BUSINESS_PHONE ? `<p>Phone: ${process.env.BUSINESS_PHONE}</p>` : ''}
     </div>
   </div>
 

@@ -3,6 +3,7 @@
 import { useAuthStore } from "@/store/authStore";
 import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import api from "@/lib/apiClient";
 
 export function AuthProvider({ children }) {
   const fetchUser = useAuthStore((state) => state.fetchUser);
@@ -12,11 +13,9 @@ export function AuthProvider({ children }) {
   const pathname = usePathname();
   const router = useRouter();
 
-  // Track whether we've already fired the /api/auth/me request so we never
-  // repeat it on every client-side navigation.  The ref persists across renders
-  // without triggering re-renders itself.
   const hasFetched = useRef(false);
 
+  // On mount, always verify session with the server once
   useEffect(() => {
     const isPublicPage =
       pathname === '/' ||
@@ -28,54 +27,40 @@ export function AuthProvider({ children }) {
       return;
     }
 
-    // Only call the API once per mount — never again on navigation
     if (!hasFetched.current) {
       hasFetched.current = true;
       fetchUser();
     }
-  }, [fetchUser]); // pathname intentionally omitted — we only want this to run once
+  }, [fetchUser]); // pathname intentionally omitted — run once on mount
 
-  // Redirect to login if user tries to access protected routes without authentication
+  // Redirect to login only after loading is complete and user is not authenticated
   useEffect(() => {
     const isProtectedRoute = pathname.startsWith('/dashboard');
-    
     if (isProtectedRoute && !isLoading && !isAuthenticated) {
-      router.push('/login');
+      router.replace('/login');
     }
   }, [pathname, isAuthenticated, isLoading, router]);
 
-  // Periodic session validation (every 5 minutes)
+  // Periodic session validation every 5 minutes — does NOT run immediately
+  // (fetchUser on mount already handles the initial check)
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    const validateSession = async () => {
+    const interval = setInterval(async () => {
       try {
-        const response = await fetch('/api/auth/me');
-        if (!response.ok) {
-          // Session expired - clear auth and redirect
-          clearUser();
-          if (pathname.startsWith('/dashboard')) {
-            router.push('/login');
-          }
-        }
-      } catch (error) {
-        if (process.env.NODE_ENV === 'development') {
-          console.error('Session validation failed:', error);
-        }
-        // On network error, don't automatically log out
+        await api.get('/api/auth/me');
+      } catch {
+        clearUser();
+        router.replace('/login');
       }
-    };
-
-    // Validate immediately if we have a user
-    validateSession();
-
-    // Set up periodic validation
-    const interval = setInterval(validateSession, 5 * 60 * 1000); // 5 minutes
+    }, 5 * 60 * 1000);
 
     return () => clearInterval(interval);
-  }, [isAuthenticated, clearUser, router, pathname]);
+  }, [isAuthenticated, clearUser, router]);
 
-  if (isLoading && !pathname.startsWith('/login') && !pathname.startsWith('/register') && pathname !== '/') {
+  // Show spinner while verifying session on protected routes
+  const isProtectedRoute = pathname.startsWith('/dashboard');
+  if (isLoading && isProtectedRoute) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>

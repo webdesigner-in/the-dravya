@@ -32,12 +32,14 @@ export async function proxy(request) {
   const token = request.cookies.get('auth-token')?.value;
 
   // ── Rate Limiting for API routes ──────────────────────────────────────────────────────────
-  if (pathname.startsWith('/api') && pathname !== '/api/health') {
+  // Only apply to data-mutating and data-fetching endpoints, skip health and auth checks
+  const skipRateLimit = pathname === '/api/health' || pathname === '/api/auth/me';
+
+  if (pathname.startsWith('/api') && !skipRateLimit) {
     const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 
                request.headers.get('x-real-ip') || 
                'unknown';
     
-    // 100 requests per minute for general API endpoints
     const rl = await checkRateLimit(`api:${ip}`, 100, 60_000);
     
     if (!rl.allowed) {

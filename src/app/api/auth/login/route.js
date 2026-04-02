@@ -4,6 +4,7 @@ import User from '@/models/User';
 import { generateToken, setAuthCookie } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { RATE_LIMITS } from '@/lib/constants';
 
 export async function POST(request) {
   try {
@@ -12,7 +13,7 @@ export async function POST(request) {
       request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
       request.headers.get('x-real-ip') ||
       'unknown';
-    const rl = await checkRateLimit(`login:${ip}`, 10, 60_000);
+    const rl = await checkRateLimit(`login:${ip}`, RATE_LIMITS.LOGIN_ATTEMPTS, RATE_LIMITS.LOGIN_WINDOW_MS);
     if (!rl.allowed) {
       return NextResponse.json(
         { error: 'Too many login attempts. Please try again in a minute.' },

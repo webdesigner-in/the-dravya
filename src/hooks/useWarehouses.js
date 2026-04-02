@@ -1,130 +1,60 @@
-import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import api from '@/lib/apiClient';
 
-// Fetch warehouses with infinite scroll
 export function useWarehouses(filters = {}) {
   return useInfiniteQuery({
     queryKey: ['warehouses', filters],
-    queryFn: async ({ pageParam = 1 }) => {
-      const queryParams = new URLSearchParams({
-        page: pageParam.toString(),
-        limit: '20',
-      });
-      
-      const response = await fetch(`/api/warehouses?${queryParams}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch warehouses');
-      }
-      return response.json();
-    },
-    getNextPageParam: (lastPage, pages) => {
-      if (lastPage.warehouses && lastPage.warehouses.length === 20) {
-        return pages.length + 1;
-      }
-      return undefined;
-    },
+    queryFn: ({ pageParam = 1 }) =>
+      api.get('/api/warehouses', { params: { page: pageParam, limit: 20 } }),
+    getNextPageParam: (lastPage, pages) =>
+      lastPage.warehouses?.length === 20 ? pages.length + 1 : undefined,
     initialPageParam: 1,
-    staleTime: 10 * 60 * 1000, // 10 minutes
+    staleTime: 10 * 60 * 1000,
   });
 }
 
-// Fetch single warehouse
 export function useWarehouse(warehouseId) {
   return useQuery({
     queryKey: ['warehouses', warehouseId],
-    queryFn: async () => {
-      const response = await fetch(`/api/warehouses/${warehouseId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch warehouse');
-      }
-      return response.json();
-    },
+    queryFn: () => api.get(`/api/warehouses/${warehouseId}`),
     enabled: !!warehouseId,
   });
 }
 
-// Create warehouse mutation
 export function useCreateWarehouse() {
   const queryClient = useQueryClient();
-
   return useMutation({
-    mutationFn: async (warehouseData) => {
-      const response = await fetch('/api/warehouses', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(warehouseData),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to create warehouse');
-      }
-
-      return response.json();
-    },
+    mutationFn: (warehouseData) => api.post('/api/warehouses', warehouseData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['warehouses'] });
       toast.success('Warehouse created successfully');
     },
-    onError: (error) => {
-      toast.error(error.message);
-    },
+    onError: (error) => toast.error(error.message),
   });
 }
 
-// Update warehouse mutation
 export function useUpdateWarehouse() {
   const queryClient = useQueryClient();
-
   return useMutation({
-    mutationFn: async ({ warehouseId, updates }) => {
-      const response = await fetch(`/api/warehouses/${warehouseId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to update warehouse');
-      }
-
-      return response.json();
-    },
-    onSuccess: (data, variables) => {
-      queryClient.setQueryData(['warehouses', variables.warehouseId], data);
+    mutationFn: ({ warehouseId, updates }) => api.put(`/api/warehouses/${warehouseId}`, updates),
+    onSuccess: (data, { warehouseId }) => {
+      queryClient.setQueryData(['warehouses', warehouseId], data);
       queryClient.invalidateQueries({ queryKey: ['warehouses'] });
       toast.success('Warehouse updated successfully');
     },
-    onError: (error) => {
-      toast.error(error.message);
-    },
+    onError: (error) => toast.error(error.message),
   });
 }
 
-// Delete warehouse mutation
 export function useDeleteWarehouse() {
   const queryClient = useQueryClient();
-
   return useMutation({
-    mutationFn: async (warehouseId) => {
-      const response = await fetch(`/api/warehouses/${warehouseId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to delete warehouse');
-      }
-
-      return response.json();
-    },
+    mutationFn: (warehouseId) => api.delete(`/api/warehouses/${warehouseId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['warehouses'] });
       toast.success('Warehouse deleted successfully');
     },
-    onError: (error) => {
-      toast.error(error.message);
-    },
+    onError: (error) => toast.error(error.message),
   });
 }

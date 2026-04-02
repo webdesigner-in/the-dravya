@@ -42,6 +42,7 @@ import { UserPlus, Trash2, Eye, EyeOff, Pencil, Info } from "lucide-react";
 import { useRouter } from "next/navigation";
 import PageHeader from "@/components/layout/PageHeader";
 import { useUsers, useCreateUser, useUpdateUser, useDeleteUser } from "@/hooks/useUsers";
+import api from "@/lib/apiClient";
 
 export default function UsersPage() {
   const isAdmin = useAuthStore((state) => state.isAdmin());
@@ -71,20 +72,13 @@ export default function UsersPage() {
   // Flatten all pages into single array
   const users = data?.pages?.flatMap(page => page.users) || [];
 
-  // Generate a unique fake phone number
-  const generateFakePhone = () => {
-    // Generate a random 8-digit number and prefix with 00
-    const randomDigits = Math.floor(10000000 + Math.random() * 90000000);
-    return `00${randomDigits}`;
-  };
-
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
     role: "distributor",
-    phone: generateFakePhone(),
-    address: "Gwalior, Madhya Pradesh",
+    phone: "",
+    address: "",
   });
 
   const [editFormData, setEditFormData] = useState({
@@ -102,14 +96,17 @@ export default function UsersPage() {
     }
   }, [isAdmin, router]);
 
-  // Generate new phone number when dialog opens
+  // Reset form when dialog opens
   useEffect(() => {
     if (isDialogOpen) {
-      setFormData(prev => ({
-        ...prev,
-        phone: generateFakePhone(),
-        address: "Gwalior, Madhya Pradesh",
-      }));
+      setFormData({
+        name: "",
+        email: "",
+        password: "",
+        role: "distributor",
+        phone: "",
+        address: "",
+      });
     }
   }, [isDialogOpen]);
 
@@ -135,24 +132,10 @@ export default function UsersPage() {
     e.preventDefault();
 
     try {
-      const userData = {
-        ...formData,
-        phone: formData.phone.trim() || generateFakePhone(),
-        address: formData.address.trim() || "Gwalior, Madhya Pradesh",
-      };
-
-      await createUser.mutateAsync(userData);
-      
-      setFormData({
-        name: "",
-        email: "",
-        password: "",
-        role: "distributor",
-        phone: generateFakePhone(),
-        address: "Gwalior, Madhya Pradesh",
-      });
+      await createUser.mutateAsync(formData);
+      setFormData({ name: "", email: "", password: "", role: "distributor", phone: "", address: "" });
       setIsDialogOpen(false);
-    } catch (error) {
+    } catch {
       // Error toast shown automatically by hook
     }
   };
@@ -180,34 +163,28 @@ export default function UsersPage() {
 
   const handleViewDetails = async (user) => {
     try {
-      const response = await fetch(`/api/users/${user.id}`);
-      if (response.ok) {
-        const data = await response.json();
-        setSelectedUser(data.user);
-        setIsDetailsDialogOpen(true);
-      }
-    } catch (error) {
+      const data = await api.get(`/api/users/${user.id}`);
+      setSelectedUser(data.user);
+      setIsDetailsDialogOpen(true);
+    } catch {
       // Error handled
     }
   };
 
   const handleEditClick = async (user) => {
     try {
-      const response = await fetch(`/api/users/${user.id}`);
-      if (response.ok) {
-        const data = await response.json();
-        setSelectedUser(data.user);
-        setEditFormData({
-          name: data.user.name,
-          email: data.user.email,
-          password: "",
-          role: data.user.role,
-          phone: data.user.phone || "",
-          address: data.user.address || "",
-        });
-        setIsEditDialogOpen(true);
-      }
-    } catch (error) {
+      const data = await api.get(`/api/users/${user.id}`);
+      setSelectedUser(data.user);
+      setEditFormData({
+        name: data.user.name,
+        email: data.user.email,
+        password: "",
+        role: data.user.role,
+        phone: data.user.phone || "",
+        address: data.user.address || "",
+      });
+      setIsEditDialogOpen(true);
+    } catch {
       // Error handled
     }
   };
@@ -339,7 +316,7 @@ export default function UsersPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, phone: e.target.value })
                     }
-                    placeholder="00XXXXXXXX"
+                    placeholder="Phone number"
                     maxLength={10}
                   />
                   <p className="text-xs text-muted-foreground">
@@ -354,11 +331,8 @@ export default function UsersPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, address: e.target.value })
                     }
-                    placeholder="Gwalior, Madhya Pradesh"
+                    placeholder="Address"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Default: Gwalior, Madhya Pradesh
-                  </p>
                 </div>
               </div>
               <DialogFooter className="mt-6">

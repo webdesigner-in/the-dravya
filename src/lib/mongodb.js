@@ -29,14 +29,13 @@ async function connectDB() {
     };
 
     cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
-      console.log('MongoDB connected successfully');
-      
-      // Preload all models to prevent MissingSchemaError
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('MongoDB connected successfully');
+      }
       preloadModels();
-      
       return mongoose;
     }).catch((error) => {
-      console.error('MongoDB connection error:', error);
+      console.error('MongoDB connection error:', error.message);
       cached.promise = null;
       throw error;
     });
@@ -46,7 +45,7 @@ async function connectDB() {
     cached.conn = await cached.promise;
   } catch (e) {
     cached.promise = null;
-    console.error('Failed to get MongoDB connection:', e);
+    console.error('Failed to get MongoDB connection:', e.message);
     throw e;
   }
 

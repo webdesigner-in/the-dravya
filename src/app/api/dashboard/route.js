@@ -6,7 +6,6 @@ import Product from '@/models/Product';
 import Invoice from '@/models/Invoice';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
-import cache, { CACHE_TTL } from '@/lib/cache';
 import { QUERY_LIMITS, QUERY_TIMEOUTS } from '@/lib/constants';
 
 // GET dashboard data
@@ -27,35 +26,12 @@ export async function GET(request) {
 
     await connectDB();
 
-    // Check cache first (but allow cache busting with query param)
-    const { searchParams } = new URL(request.url);
-    const bustCache = searchParams.get('bustCache') === 'true';
-    
-    const cacheKey = `dashboard_${authUser.userId}_${authUser.role}`;
-    
-    if (!bustCache) {
-      const cachedData = cache.get(cacheKey);
-      
-      if (cachedData) {
-        return NextResponse.json(cachedData, {
-          headers: {
-            'X-Cache': 'HIT',
-            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-            'Pragma': 'no-cache',
-            'Expires': '0',
-          },
-        });
-      }
-    }
-
     // Get dates - Use local timezone to match user's perspective
     const now = new Date();
-    // Get start of today in local timezone
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    const endOfToday   = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
 
-    // Filter orders by the logged-in user (createdBy) - Admin sees all orders
     const orderFilter = authUser.role === 'admin' ? {} : { createdBy: authUser.userId };
 
     // Fetch only necessary data with limits and specific fields
@@ -315,17 +291,7 @@ export async function GET(request) {
       dashboard,
     };
 
-    // Cache the result for 5 minutes
-    cache.set(cacheKey, responseData, CACHE_TTL.DASHBOARD);
-
-    return NextResponse.json(responseData, {
-      headers: {
-        'X-Cache': 'MISS',
-        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-        'Pragma': 'no-cache',
-        'Expires': '0',
-      },
-    });
+    return NextResponse.json(responseData);
   } catch (error) {
     const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to fetch dashboard data');
     return NextResponse.json(

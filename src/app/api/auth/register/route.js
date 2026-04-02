@@ -6,7 +6,7 @@ import { handleApiError } from '@/lib/errorHandler';
 
 export async function POST(request) {
   try {
-    const { name, email, password, role, phone, address } = await request.json();
+    const { name, email, password, phone, address } = await request.json();
 
     if (!name || !email || !password) {
       return NextResponse.json(
@@ -15,9 +15,9 @@ export async function POST(request) {
       );
     }
 
-    if (password.length < 6) {
+    if (password.length < 8) {
       return NextResponse.json(
-        { error: 'Password must be at least 6 characters' },
+        { error: 'Password must be at least 8 characters' },
         { status: 400 }
       );
     }
@@ -33,11 +33,12 @@ export async function POST(request) {
       );
     }
 
+    // Role is always 'distributor' for self-registration — never trust client-supplied role
     const user = await User.create({
       name,
       email,
       password,
-      role: role || 'distributor',
+      role: 'distributor',
       phone,
       address,
     });

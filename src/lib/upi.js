@@ -38,14 +38,6 @@ export function generateUPIQRCode(upiString, size = 300) {
 }
 
 /**
- * Format UPI ID for display
- */
-export function formatUPIId(upiId) {
-  if (!upiId) return "";
-  return upiId.toLowerCase().trim();
-}
-
-/**
  * Validate UPI ID format
  */
 export function validateUPIId(upiId) {

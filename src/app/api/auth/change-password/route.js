@@ -25,9 +25,9 @@ export async function PUT(request) {
       );
     }
 
-    if (newPassword.length < 6) {
+    if (newPassword.length < 8) {
       return NextResponse.json(
-        { error: 'New password must be at least 6 characters' },
+        { error: 'New password must be at least 8 characters' },
         { status: 400 }
       );
     }

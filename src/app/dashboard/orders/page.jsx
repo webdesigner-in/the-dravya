@@ -60,6 +60,7 @@ import { getUserFriendlyError } from "@/lib/errorMessages";
 import { useOrders, useCreateOrder, useUpdateOrder, useDeleteOrder } from "@/hooks/useOrders";
 import { useQueryClient } from '@tanstack/react-query';
 import { generateUPIString, generateUPIQRCode } from "@/lib/upi";
+import api from "@/lib/apiClient";
 
 export default function OrdersPage() {
   const searchParams = useSearchParams();
@@ -193,56 +194,30 @@ export default function OrdersPage() {
   // Fetch customers
   const fetchCustomers = useCallback(async (searchTerm = "") => {
     try {
-      let url = "/api/customers?limit=100";
-      if (searchTerm) {
-        url += `&search=${encodeURIComponent(searchTerm)}`;
+      const data = await api.get("/api/customers", { params: { limit: 100, ...(searchTerm && { search: searchTerm }) } });
+      setCustomers(data.customers || []);
+      if (customerIdFromUrl) {
+        const customer = (data.customers || []).find(c => c._id === customerIdFromUrl);
+        if (customer) setSelectedCustomerName(customer.name);
       }
-      
-      const response = await fetch(url);
-      if (response.ok) {
-        const data = await response.json();
-        setCustomers(data.customers || []);
-        
-        if (customerIdFromUrl) {
-          const customer = (data.customers || []).find(c => c._id === customerIdFromUrl);
-          if (customer) {
-            setSelectedCustomerName(customer.name);
-          }
-        }
-      } else {
-        console.error('Failed to fetch customers:', response.status);
-        toast.error('Failed to load customers');
-      }
-    } catch (error) {
-      console.error('Error fetching customers:', error);
-      toast.error('Error loading customers');
+    } catch {
+      toast.error('Failed to load customers');
     }
   }, [customerIdFromUrl]);
 
   const fetchProducts = useCallback(async () => {
     try {
-      const response = await fetch("/api/products?active=true");
-      if (response.ok) {
-        const data = await response.json();
-        const activeProducts = (data.products || []).filter(p => p.stock > 0);
-        setProducts(activeProducts);
-      } else {
-        console.error('Failed to fetch products:', response.status);
-        toast.error('Failed to load products');
-      }
-    } catch (error) {
-      console.error('Error fetching products:', error);
-      toast.error('Error loading products');
+      const data = await api.get("/api/products", { params: { active: true } });
+      setProducts((data.products || []).filter(p => p.stock > 0));
+    } catch {
+      toast.error('Failed to load products');
     }
   }, []);
 
   const fetchLastOrder = useCallback(async (customerId) => {
     try {
-      const response = await fetch(`/api/orders?customer=${customerId}&limit=1&status=delivered`);
-      if (response.ok) {
-        const data = await response.json();
-        setLastOrder(data.orders?.[0] || null);
-      }
+      const data = await api.get(`/api/orders`, { params: { customer: customerId, limit: 1, status: 'delivered' } });
+      setLastOrder(data.orders?.[0] || null);
     } catch {
       setLastOrder(null);
     }
@@ -690,40 +665,14 @@ export default function OrdersPage() {
 
     setIsSubmitting(true);
     try {
-      const response = await fetch(`/api/orders/${selectedOrder._id}/invoice`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(invoiceData),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to create invoice");
-      }
-
-      // Invalidate orders cache to refresh the UI with invoice data
+      const data = await api.post(`/api/orders/${selectedOrder._id}/invoice`, invoiceData);
       queryClient.invalidateQueries({ queryKey: ['orders'] });
-
       toast.success("Invoice created successfully!", {
-        action: {
-          label: "View Invoice",
-          onClick: () => {
-            window.location.href = `/dashboard/invoices/${data.invoice._id}`;
-          },
-        },
+        action: { label: "View Invoice", onClick: () => { window.location.href = `/dashboard/invoices/${data.invoice._id}`; } },
       });
-      
       setIsInvoiceDialogOpen(false);
       setSelectedOrder(null);
-      setInvoiceData({
-        dueDate: "",
-        paymentTerms: "Due on receipt",
-        paymentStatus: "unpaid",
-        paidAmount: "0",
-        notes: "",
-        terms: "",
-      });
+      setInvoiceData({ dueDate: "", paymentTerms: "Due on receipt", paymentStatus: "unpaid", paidAmount: "0", notes: "", terms: "" });
     } catch (error) {
       toast.error(getUserFriendlyError(error));
     } finally {
@@ -2388,28 +2337,15 @@ export default function OrdersPage() {
                 setIsSubmitting(true);
                 
                 try {
-                  const response = await fetch(`/api/invoices/${selectedInvoice._id}/payment`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      amount,
-                      paymentMethod,
-                      notes: paymentMethod === "upi" && transactionId 
-                        ? `${paymentNotes ? paymentNotes + " | " : ""}UPI Transaction ID: ${transactionId}`
-                        : paymentNotes,
-                      transactionId: paymentMethod === "upi" ? transactionId : undefined,
-                    }),
+                  const data = await api.post(`/api/invoices/${selectedInvoice._id}/payment`, {
+                    amount,
+                    paymentMethod,
+                    notes: paymentMethod === "upi" && transactionId 
+                      ? `${paymentNotes ? paymentNotes + " | " : ""}UPI Transaction ID: ${transactionId}`
+                      : paymentNotes,
+                    transactionId: paymentMethod === "upi" ? transactionId : undefined,
                   });
-
-                  const data = await response.json();
-
-                  if (!response.ok) {
-                    throw new Error(data.error || "Failed to record payment");
-                  }
-
-                  // Invalidate orders cache to refresh invoice payment status
                   queryClient.invalidateQueries({ queryKey: ['orders'] });
-
                   toast.success(data.message || "Payment recorded successfully!");
                   setIsRecordPaymentDialogOpen(false);
                   setPaymentAmount("");
@@ -2566,20 +2502,8 @@ export default function OrdersPage() {
 
                           setIsSubmitting(true);
                           try {
-                            const response = await fetch(`/api/invoices/${selectedInvoice._id}/reset-payments`, {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                            });
-
-                            const data = await response.json();
-
-                            if (!response.ok) {
-                              throw new Error(data.error || "Failed to reset payments");
-                            }
-
-                            // Invalidate orders cache to refresh invoice payment status
+                            await api.post(`/api/invoices/${selectedInvoice._id}/reset-payments`);
                             queryClient.invalidateQueries({ queryKey: ['orders'] });
-
                             toast.success("All payments reset successfully!");
                             setIsRecordPaymentDialogOpen(false);
                             setPaymentAmount("");

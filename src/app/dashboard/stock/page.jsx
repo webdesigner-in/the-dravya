@@ -36,9 +36,12 @@ import {
   ArrowDownCircle,
   RefreshCw,
   Package,
+  TrendingDown,
+  AlertTriangle,
+  CheckCircle,
 } from "lucide-react";
 import PageHeader from "@/components/layout/PageHeader";
-import { useStockMovements, useCreateStockMovement } from "@/hooks/useStock";
+import { useStockMovements, useCreateStockMovement, useStockForecast } from "@/hooks/useStock";
 import { useProducts } from "@/hooks/useProducts";
 
 export default function StockPage() {
@@ -50,6 +53,7 @@ export default function StockPage() {
   
   // React Query hooks with infinite scroll
   const { data: productsData } = useProducts({});
+  const { data: forecastData, isLoading: isForecastLoading } = useStockForecast();
   const { 
     data, 
     isLoading, 
@@ -59,7 +63,8 @@ export default function StockPage() {
   } = useStockMovements({});
   const createStockMovement = useCreateStockMovement();
   
-  const products = productsData?.products || [];
+  const products = productsData?.pages?.flatMap(page => page.products) || [];
+  const forecast = forecastData?.forecast || [];
   // Flatten all pages into single array
   const movements = data?.pages?.flatMap(page => page.movements) || [];
 
@@ -330,6 +335,100 @@ export default function StockPage() {
           </Card>
         ))}
       </div>
+
+      {/* Stock Forecast */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingDown className="h-5 w-5" />
+            Stock Forecast
+          </CardTitle>
+          <CardDescription>
+            Based on average daily usage over the last 30 days. Shows how many days of stock remain.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isForecastLoading ? (
+            <div className="flex justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
+            </div>
+          ) : forecast.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8">No products found</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b">
+                  <tr className="text-left">
+                    <th className="pb-2 px-2">Product</th>
+                    <th className="pb-2 px-2 text-center">Current Stock</th>
+                    <th className="pb-2 px-2 text-center">Avg/Day</th>
+                    <th className="pb-2 px-2 text-center">Days Left</th>
+                    <th className="pb-2 px-2 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {forecast.map((item) => (
+                    <tr key={item._id} className="hover:bg-muted/50">
+                      <td className="py-3 px-2">
+                        <p className="font-medium">{item.name}</p>
+                        <p className="text-xs text-muted-foreground">{item.sku} · {item.size?.value}{item.size?.unit}</p>
+                      </td>
+                      <td className="py-3 px-2 text-center">
+                        <span className={`font-semibold ${item.outOfStock ? 'text-red-600' : item.belowMin ? 'text-orange-600' : ''}`}>
+                          {item.stock}
+                        </span>
+                        <p className="text-xs text-muted-foreground">min {item.minStockLevel}</p>
+                      </td>
+                      <td className="py-3 px-2 text-center text-muted-foreground">
+                        {item.avgDailyUsage > 0 ? `${item.avgDailyUsage} cartons` : '—'}
+                      </td>
+                      <td className="py-3 px-2 text-center">
+                        {item.daysRemaining === null ? (
+                          <span className="text-muted-foreground text-xs">No sales data</span>
+                        ) : (
+                          <span className={`font-bold text-base ${
+                            item.daysRemaining <= 3  ? 'text-red-600' :
+                            item.daysRemaining <= 7  ? 'text-orange-500' :
+                            item.daysRemaining <= 14 ? 'text-yellow-600' :
+                            'text-green-600'
+                          }`}>
+                            {item.daysRemaining}d
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-2 text-center">
+                        {item.status === 'out' && (
+                          <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-red-100 text-red-700">
+                            <AlertTriangle className="h-3 w-3" /> Out of stock
+                          </span>
+                        )}
+                        {item.status === 'critical' && (
+                          <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-orange-100 text-orange-700">
+                            <AlertTriangle className="h-3 w-3" /> Reorder now
+                          </span>
+                        )}
+                        {item.status === 'low' && (
+                          <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-yellow-100 text-yellow-700">
+                            <AlertTriangle className="h-3 w-3" /> Low stock
+                          </span>
+                        )}
+                        {item.status === 'ok' && (
+                          <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-green-100 text-green-700">
+                            <CheckCircle className="h-3 w-3" /> OK
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-xs text-muted-foreground mt-3">
+                * Forecast based on {forecastData?.lookbackDays || 30} days of delivered orders. Products with no recent sales show no forecast.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Recent Movements */}
       <Card>
