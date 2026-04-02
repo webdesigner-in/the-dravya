@@ -20,37 +20,31 @@ import { toast } from "sonner";
 export default function Navbar() {
   const user = useAuthStore((state) => state.user);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const isValidSession = useAuthStore((state) => state.isValidSession);
+  const isTokenExpired = useAuthStore((state) => state.isTokenExpired);
   const logout = useAuthStore((state) => state.logout);
   const router = useRouter();
 
   // Check token expiration on mount and periodically
   useEffect(() => {
     const checkTokenExpiration = () => {
-      if (isAuthenticated && !isValidSession()) {
-        // Token expired - logout user
+      if (isAuthenticated && isTokenExpired()) {
         toast.error("Your session has expired. Please login again.");
         logout();
         router.push("/login");
       }
     };
 
-    // Check immediately
     checkTokenExpiration();
-
-    // Check every minute
     const interval = setInterval(checkTokenExpiration, 60 * 1000);
-
     return () => clearInterval(interval);
-  }, [isAuthenticated, isValidSession, logout, router]);
+  }, [isAuthenticated, isTokenExpired, logout, router]);
+
+  const showLoginButton = !isAuthenticated || isTokenExpired();
 
   const handleLogout = async () => {
     await logout();
     router.push("/login");
   };
-
-  // Show login button if not authenticated OR token is expired
-  const showLoginButton = !isAuthenticated || !isValidSession();
 
   return (
     <header className="sticky top-4 z-50 w-full flex justify-center px-4 mb-8">
