@@ -83,17 +83,13 @@ export function AppSidebar() {
   const user = useAuthStore((state) => state.user);
   const isAdmin = useAuthStore((state) => state.isAdmin());
   const logout = useAuthStore((state) => state.logout);
-  const fetchUser = useAuthStore((state) => state.fetchUser);
+  const isLoading = useAuthStore((state) => state.isLoading);
   const router = useRouter();
   const sidebarContentRef = useRef(null);
   const { isMobile, setOpenMobile } = useSidebar();
 
-  // Fetch user data on mount if not loaded
-  useEffect(() => {
-    if (!user) {
-      fetchUser();
-    }
-  }, [user, fetchUser]);
+  // Fetch user data on mount if not loaded — handled by AuthProvider
+  // Sidebar just reads from the store
 
   // Save and restore sidebar scroll position
   useEffect(() => {
@@ -223,14 +219,18 @@ export function AppSidebar() {
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <Avatar className="shrink-0">
               <AvatarFallback>
-                {user?.name?.charAt(0).toUpperCase() || "U"}
+                {isLoading ? '…' : user?.name?.charAt(0).toUpperCase() || 'U'}
               </AvatarFallback>
             </Avatar>
             <div className="flex flex-col min-w-0 flex-1">
-              <span className="text-sm font-medium truncate">{user?.name || "User"}</span>
-              <span className="text-xs text-muted-foreground truncate">
-                {user?.role || "user"}
-              </span>
+              {isLoading ? (
+                <span className="text-sm text-muted-foreground">Loading...</span>
+              ) : (
+                <>
+                  <span className="text-sm font-medium truncate">{user?.name}</span>
+                  <span className="text-xs text-muted-foreground truncate capitalize">{user?.role}</span>
+                </>
+              )}
             </div>
           </div>
           <Button variant="ghost" size="icon" title="Logout" onClick={handleLogout} className="shrink-0">

@@ -66,15 +66,27 @@ export const useAuthStore = create(
         try {
           if (get().isTokenExpired()) {
             set({ user: null, isLoading: false, isAuthenticated: false, tokenExpiry: null });
-            if (typeof window !== 'undefined') localStorage.removeItem('auth-storage');
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('auth-storage');
+              if (window.location.pathname.startsWith('/dashboard')) {
+                window.location.replace('/login');
+              }
+            }
             return;
           }
           const data = await api.get('/api/auth/me');
           const tokenExpiry = get().tokenExpiry || Date.now() + (24 * 60 * 60 * 1000);
           set({ user: data.user, isLoading: false, isAuthenticated: true, tokenExpiry });
         } catch {
+          // Session invalid — clear everything
           set({ user: null, isLoading: false, isAuthenticated: false, tokenExpiry: null });
-          if (typeof window !== 'undefined') localStorage.removeItem('auth-storage');
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('auth-storage');
+            // Redirect immediately without waiting for React re-render cycle
+            if (window.location.pathname.startsWith('/dashboard')) {
+              window.location.replace('/login');
+            }
+          }
         }
       },
 
