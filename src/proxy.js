@@ -78,14 +78,9 @@ export async function proxy(request) {
     }
   }
 
-  // ── Auth pages (login / register) ────────────────────────────────────────────────────────
-  // Redirect already-authenticated users away from auth pages
-  if (isAuthPage && token) {
-    const payload = await verifyToken(token);
-    if (payload) {
-      return NextResponse.redirect(new URL('/dashboard', request.url));
-    }
-  }
+  // ── Auth pages — let the client handle redirecting authenticated users ──────
+  // Removing server-side redirect here prevents the loop where:
+  // client calls router.replace('/login') → proxy redirects back to /dashboard → loop
 
   return NextResponse.next();
 }

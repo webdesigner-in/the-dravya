@@ -1,21 +1,18 @@
 "use client";
 
-import { useAuthStore } from "@/store/authStore";
 import { useEffect, useRef } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { useAuthStore } from "@/store/authStore";
 import api from "@/lib/apiClient";
 
 export function AuthProvider({ children }) {
-  const fetchUser = useAuthStore((state) => state.fetchUser);
-  const isLoading = useAuthStore((state) => state.isLoading);
+  const isLoading       = useAuthStore((state) => state.isLoading);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const clearUser = useAuthStore((state) => state.clearUser);
-  const pathname = usePathname();
-  const router = useRouter();
+  const pathname        = usePathname();
+  const router          = useRouter();
+  const redirectedRef   = useRef(false);
 
-  const hasFetched = useRef(false);
-
-  // On mount, always verify session with the server once
+  // Verify session ONCE on mount
   useEffect(() => {
     const isPublicPage =
       pathname === '/' ||
@@ -27,40 +24,50 @@ export function AuthProvider({ children }) {
       return;
     }
 
-    if (!hasFetched.current) {
-      hasFetched.current = true;
-      fetchUser();
-    }
-  }, [fetchUser]); // pathname intentionally omitted — run once on mount
+    useAuthStore.getState().fetchUser();
 
-  // Redirect to login only after loading is complete and user is not authenticated
+    // Safety net: never stuck on spinner longer than 10s
+    const timeout = setTimeout(() => {
+      const { isLoading: still, isAuthenticated: authed } = useAuthStore.getState();
+      if (still && !authed) {
+        useAuthStore.setState({ isLoading: false });
+        window.location.replace('/login');
+      }
+    }, 10_000);
+
+    return () => clearTimeout(timeout);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // mount only
+
+  // Redirect unauthenticated users — use ref to prevent firing more than once
   useEffect(() => {
-    const isProtectedRoute = pathname.startsWith('/dashboard');
-    if (isProtectedRoute && !isLoading && !isAuthenticated) {
-      router.replace('/login');
+    if (!pathname.startsWith('/dashboard')) return;
+    if (isLoading) return;
+    if (isAuthenticated) {
+      redirectedRef.current = false; // reset on successful auth
+      return;
     }
+    if (redirectedRef.current) return; // already redirected
+    redirectedRef.current = true;
+    router.replace('/login');
   }, [pathname, isAuthenticated, isLoading, router]);
 
-  // Periodic session validation every 5 minutes — does NOT run immediately
-  // (fetchUser on mount already handles the initial check)
+  // Periodic session check every 5 minutes
   useEffect(() => {
     if (!isAuthenticated) return;
-
     const interval = setInterval(async () => {
       try {
         await api.get('/api/auth/me');
       } catch {
-        clearUser();
-        router.replace('/login');
+        useAuthStore.getState().clearUser();
+        window.location.replace('/login');
       }
     }, 5 * 60 * 1000);
-
     return () => clearInterval(interval);
-  }, [isAuthenticated, clearUser, router]);
+  }, [isAuthenticated]);
 
-  // Show spinner while verifying session on protected routes
-  const isProtectedRoute = pathname.startsWith('/dashboard');
-  if (isLoading && isProtectedRoute) {
+  // Spinner on protected routes while loading
+  if (isLoading && pathname.startsWith('/dashboard')) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>

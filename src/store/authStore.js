@@ -2,17 +2,27 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import api from '@/lib/apiClient';
 
+const redirectToLogin = () => {
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/dashboard')) {
+    window.location.replace('/login');
+  }
+};
+
+const clearStorage = () => {
+  if (typeof window !== 'undefined') localStorage.removeItem('auth-storage');
+};
+
 export const useAuthStore = create(
   persist(
     (set, get) => ({
       user: null,
-      isLoading: true, // Start true — always verify on mount
+      isLoading: true,
       isAuthenticated: false,
       tokenExpiry: null,
 
       clearUser: () => {
         set({ user: null, isLoading: false, isAuthenticated: false, tokenExpiry: null });
-        if (typeof window !== 'undefined') localStorage.removeItem('auth-storage');
+        clearStorage();
       },
 
       isTokenExpired: () => {
@@ -26,7 +36,6 @@ export const useAuthStore = create(
           set({ isLoading: true });
           const data = await api.post('/api/auth/login', { email, password });
           const tokenExpiry = Date.now() + (24 * 60 * 60 * 1000);
-          // fetchUser will set the final state with all fields (upiId, businessName etc.)
           set({ user: data.user, isAuthenticated: true, tokenExpiry });
           await get().fetchUser();
           return { success: true, user: data.user };
@@ -56,7 +65,7 @@ export const useAuthStore = create(
           // Even if logout API fails, clear local state
         } finally {
           set({ user: null, isLoading: false, isAuthenticated: false, tokenExpiry: null });
-          if (typeof window !== 'undefined') localStorage.removeItem('auth-storage');
+          clearStorage();
         }
         return { success: true };
       },
@@ -64,29 +73,21 @@ export const useAuthStore = create(
       fetchUser: async () => {
         set({ isLoading: true });
         try {
+          // If token is expired or missing, don't even hit the API
           if (get().isTokenExpired()) {
             set({ user: null, isLoading: false, isAuthenticated: false, tokenExpiry: null });
-            if (typeof window !== 'undefined') {
-              localStorage.removeItem('auth-storage');
-              if (window.location.pathname.startsWith('/dashboard')) {
-                window.location.replace('/login');
-              }
-            }
+            clearStorage();
+            redirectToLogin();
             return;
           }
           const data = await api.get('/api/auth/me');
           const tokenExpiry = get().tokenExpiry || Date.now() + (24 * 60 * 60 * 1000);
           set({ user: data.user, isLoading: false, isAuthenticated: true, tokenExpiry });
         } catch {
-          // Session invalid — clear everything
+          // Cookie invalid / expired / network error — clear and redirect
           set({ user: null, isLoading: false, isAuthenticated: false, tokenExpiry: null });
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem('auth-storage');
-            // Redirect immediately without waiting for React re-render cycle
-            if (window.location.pathname.startsWith('/dashboard')) {
-              window.location.replace('/login');
-            }
-          }
+          clearStorage();
+          redirectToLogin();
         }
       },
 
@@ -95,13 +96,12 @@ export const useAuthStore = create(
         if (currentUser) set({ user: { ...currentUser, ...updates } });
       },
 
-      // Helper getters
-      getUserRole: () => get().user?.role,
-      getUserEmail: () => get().user?.email,
-      getUserName: () => get().user?.name,
-      getUserId: () => get().user?.id,
-      isAdmin: () => get().user?.role === 'admin',
-      isDistributor: () => get().user?.role === 'distributor',
+      getUserRole:    () => get().user?.role,
+      getUserEmail:   () => get().user?.email,
+      getUserName:    () => get().user?.name,
+      getUserId:      () => get().user?.id,
+      isAdmin:        () => get().user?.role === 'admin',
+      isDistributor:  () => get().user?.role === 'distributor',
     }),
     {
       name: 'auth-storage',
@@ -110,7 +110,12 @@ export const useAuthStore = create(
         tokenExpiry: state.tokenExpiry,
       }),
       onRehydrateStorage: () => (state) => {
-        if (!state) return;
+        // state is null when localStorage was cleared/tampered
+        if (!state) {
+          // Can't mutate null — the store will use initial values (isLoading: true)
+          // AuthProvider will call fetchUser which will redirect to login
+          return;
+        }
 
         const isExpired = state.tokenExpiry ? Date.now() > state.tokenExpiry : true;
 
@@ -118,13 +123,13 @@ export const useAuthStore = create(
           state.user = null;
           state.isAuthenticated = false;
           state.tokenExpiry = null;
-          if (typeof window !== 'undefined') localStorage.removeItem('auth-storage');
+          clearStorage();
         } else {
           state.isAuthenticated = !!state.user;
         }
 
-        // Keep isLoading: true so AuthProvider always verifies with the server
-        // before rendering protected content
+        // Always keep isLoading: true after rehydration so AuthProvider
+        // verifies the session with the server before rendering content
         state.isLoading = true;
       },
     }
