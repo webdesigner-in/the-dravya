@@ -105,31 +105,17 @@ export const useAuthStore = create(
     }),
     {
       name: 'auth-storage',
+      // Only persist tokenExpiry — never persist user data in localStorage
+      // The JWT is already secure in an httpOnly cookie
+      // User data is fetched fresh from /api/auth/me on every load
       partialize: (state) => ({
-        user: state.user,
         tokenExpiry: state.tokenExpiry,
       }),
       onRehydrateStorage: () => (state) => {
-        // state is null when localStorage was cleared/tampered
-        if (!state) {
-          // Can't mutate null — the store will use initial values (isLoading: true)
-          // AuthProvider will call fetchUser which will redirect to login
-          return;
-        }
-
-        const isExpired = state.tokenExpiry ? Date.now() > state.tokenExpiry : true;
-
-        if (isExpired) {
-          state.user = null;
-          state.isAuthenticated = false;
-          state.tokenExpiry = null;
-          clearStorage();
-        } else {
-          state.isAuthenticated = !!state.user;
-        }
-
-        // Always keep isLoading: true after rehydration so AuthProvider
-        // verifies the session with the server before rendering content
+        if (!state) return;
+        // Never restore user from localStorage — always verify with server
+        state.user = null;
+        state.isAuthenticated = false;
         state.isLoading = true;
       },
     }
