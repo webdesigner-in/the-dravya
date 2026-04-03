@@ -14,14 +14,10 @@ export async function GET(request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (authUser.role !== "admin") {
-      return NextResponse.json(
-        { error: "Access denied. Only administrators can view daily summary." },
-        { status: 403 }
-      );
-    }
-
     await connectDB();
+
+    const isAdmin = authUser.role === "admin";
+    const userFilter = isAdmin ? {} : { createdBy: authUser.userId };
 
     const { searchParams } = new URL(request.url);
     const date = searchParams.get("date") || new Date().toISOString().split("T")[0];
@@ -31,12 +27,15 @@ export async function GET(request) {
     const endOfDay   = new Date(year, month - 1, day, 23, 59, 59, 999);
 
     // ── 1. Orders DELIVERED on this date ─────────────────────────────────────
-    // Used to show what was dispatched/delivered, not what was collected
+    // Use deliveryDate if set. Fall back to createdAt (order creation date) — never
+    // updatedAt, because recording a payment updates updatedAt and would cause orders
+    // delivered on earlier dates to appear in today's delivery list.
     const deliveredOrders = await Order.find({
+      ...userFilter,
       status: "delivered",
       $or: [
         { deliveryDate: { $gte: startOfDay, $lte: endOfDay } },
-        { deliveryDate: null, updatedAt: { $gte: startOfDay, $lte: endOfDay } },
+        { deliveryDate: null, createdAt: { $gte: startOfDay, $lte: endOfDay } },
       ],
     })
       .populate("customer", "name phone")
@@ -45,12 +44,15 @@ export async function GET(request) {
       .lean();
 
     // ── 2. Cash COLLECTED on this date (from invoice payment history) ─────────
-    // This is the key change: we look at when payments were actually recorded,
-    // not when the order was delivered. An order delivered on Apr 2 but paid on
-    // Apr 10 will appear in the Apr 10 cash collection, not Apr 2.
-    const invoicesWithPayments = await Invoice.find({
-      "paymentHistory.date": { $gte: startOfDay, $lte: endOfDay },
-    })
+    // For distributors, only show payments on invoices linked to their orders
+    let invoiceFilter = { "paymentHistory.date": { $gte: startOfDay, $lte: endOfDay } };
+    if (!isAdmin) {
+      const userOrderIds = await Order.find({ createdBy: authUser.userId })
+        .select('_id').lean();
+      invoiceFilter.order = { $in: userOrderIds.map(o => o._id) };
+    }
+
+    const invoicesWithPayments = await Invoice.find(invoiceFilter)
       .populate("customer", "name phone")
       .populate("order", "orderNumber orderType guestInfo deliveryDate")
       .lean();
@@ -78,14 +80,14 @@ export async function GET(request) {
       }
     }
 
-    // ── 3. Expenses on this date ──────────────────────────────────────────────
-    const transactions = await Transaction.find({
+    // ── 3. Expenses on this date (admin only — expenses are business-wide) ────
+    const transactions = isAdmin ? await Transaction.find({
       date: { $gte: startOfDay, $lte: endOfDay },
     })
       .populate("customer", "name")
       .populate("order", "orderNumber")
       .sort({ date: -1 })
-      .lean();
+      .lean() : [];
 
     // ── Summary calculations ──────────────────────────────────────────────────
     // Revenue = value of orders delivered today
@@ -124,6 +126,7 @@ export async function GET(request) {
     return NextResponse.json({
       success: true,
       date,
+      isAdmin,
       summary: {
         // Delivery-based (what went out today)
         totalRevenue,

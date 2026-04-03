@@ -10,7 +10,7 @@ import { useDailySummary } from "@/hooks/useDailySummary";
 import { useAuthStore } from "@/store/authStore";
 
 export default function DailySummaryPage() {
-  const isAdmin = useAuthStore((state) => state.isAdmin());
+  const isAdminUser = useAuthStore((state) => state.isAdmin());
 
   const getTodayDate = () => {
     const today = new Date();
@@ -19,6 +19,8 @@ export default function DailySummaryPage() {
 
   const [selectedDate, setSelectedDate] = useState(getTodayDate());
   const { data, isLoading } = useDailySummary(selectedDate);
+
+  const isAdmin = data?.isAdmin ?? isAdminUser;
 
   const summary = data?.summary || {
     totalRevenue: 0, cashCollectedToday: 0, creditGiven: 0, paidOnDelivery: 0,
@@ -33,14 +35,6 @@ export default function DailySummaryPage() {
 
   const fmt = (n) => parseFloat(n || 0).toFixed(2);
   const fmtDate = (d) => d ? new Date(d).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—";
-
-  if (!isAdmin) {
-    return (
-      <div className="flex justify-center items-center h-screen">
-        <p className="text-muted-foreground">Access denied. This page is only for administrators.</p>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -83,6 +77,7 @@ export default function DailySummaryPage() {
                 <p className="text-xs text-muted-foreground mt-1">From today&apos;s deliveries</p>
               </CardContent>
             </Card>
+            {isAdmin && (
             <Card>
               <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Total Expenses</CardTitle></CardHeader>
               <CardContent>
@@ -90,13 +85,18 @@ export default function DailySummaryPage() {
                 <p className="text-xs text-muted-foreground mt-1">Fuel: ₹{fmt(summary.fuelExpense)}</p>
               </CardContent>
             </Card>
+            )}
           </div>
 
           {/*  Net cash  */}
           <Card className="border-2 border-primary">
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><IndianRupee className="h-5 w-5" />Net Cash in Hand</CardTitle>
-              <CardDescription>Cash collected today minus expenses — regardless of delivery date</CardDescription>
+              <CardDescription>
+                {isAdmin
+                  ? "Cash collected today minus expenses — regardless of delivery date"
+                  : "Cash collected today from your orders"}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className={`text-4xl font-bold ${summary.netCash >= 0 ? "text-green-600" : "text-red-600"}`}>
@@ -223,7 +223,8 @@ export default function DailySummaryPage() {
             </CardContent>
           </Card>
 
-          {/* ── Expenses ── */}
+          {/* ── Expenses (admin only) ── */}
+          {isAdmin && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -267,6 +268,7 @@ export default function DailySummaryPage() {
               )}
             </CardContent>
           </Card>
+          )}
 
         </div>
       )}
