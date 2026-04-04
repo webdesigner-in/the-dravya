@@ -191,24 +191,44 @@ export async function GET(request) {
     const overdueAmount = filteredOverdueInvoices.reduce((sum, inv) => sum + (inv.balanceAmount || 0), 0);
 
     // Calculate actual outstanding balance for customers with credit limits
-    // Single aggregation instead of N+1 queries
+    // from invoices so this matches the ledger and invoice views.
     const creditWarningIds = creditLimitWarnings.map(c => c._id);
-    const creditBalances = await Order.aggregate([
+    const creditBalancePipeline = [
       {
         $match: {
           customer: { $in: creditWarningIds },
-          status: 'delivered',
+          balanceAmount: { $gt: 0 },
         },
       },
-      {
-        $group: {
-          _id: '$customer',
-          outstanding: {
-            $sum: { $subtract: [{ $ifNull: ['$finalAmount', 0] }, { $ifNull: ['$paidAmount', 0] }] },
+    ];
+
+    if (authUser.role !== 'admin') {
+      creditBalancePipeline.push(
+        {
+          $lookup: {
+            from: 'orders',
+            localField: 'order',
+            foreignField: '_id',
+            as: 'orderData',
           },
         },
+        { $unwind: '$orderData' },
+        {
+          $match: {
+            'orderData.createdBy': Order.db.base.Types.ObjectId.createFromHexString(authUser.userId),
+          },
+        }
+      );
+    }
+
+    creditBalancePipeline.push({
+      $group: {
+        _id: '$customer',
+        outstanding: { $sum: { $ifNull: ['$balanceAmount', 0] } },
       },
-    ]);
+    });
+
+    const creditBalances = await Invoice.aggregate(creditBalancePipeline);
 
     const creditBalanceMap = {};
     for (const b of creditBalances) creditBalanceMap[b._id.toString()] = b.outstanding;

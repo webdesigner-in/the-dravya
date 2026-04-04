@@ -81,7 +81,7 @@ export async function GET(request) {
           .lean()
           .maxTimeMS(QUERY_TIMEOUTS.FAST),
         Product.find({})
-          .select('_id name size stock reorderLevel')
+          .select('_id name size stock minStockLevel')
           .lean()
           .maxTimeMS(QUERY_TIMEOUTS.FAST),
         // Fetch all invoices with their order reference
@@ -156,7 +156,7 @@ export async function GET(request) {
 
     // Inventory Metrics
     const totalStock = products.reduce((sum, product) => sum + (product.stock || 0), 0);
-    const lowStockProducts = products.filter((product) => product.stock > 0 && product.stock <= (product.reorderLevel || 10)).length;
+    const lowStockProducts = products.filter((product) => product.stock > 0 && product.stock <= (product.minStockLevel || 10)).length;
     const outOfStockProducts = products.filter((product) => product.stock === 0).length;
 
     // Invoice Metrics

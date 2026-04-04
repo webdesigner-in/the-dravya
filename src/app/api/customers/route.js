@@ -63,23 +63,22 @@ export async function GET(request) {
       Customer.countDocuments(filter)
     ]);
 
-    // Calculate outstanding balance in ONE aggregation instead of N+1 queries
-    const Order = (await import('@/models/Order')).default;
+    // Calculate outstanding balance from invoice balances so customer dues stay
+    // consistent with ledger and invoice screens.
+    const Invoice = (await import('@/models/Invoice')).default;
     const customerIds = customers.map(c => c._id);
 
-    const balances = await Order.aggregate([
+    const balances = await Invoice.aggregate([
       {
         $match: {
           customer: { $in: customerIds },
-          status: 'delivered',
+          balanceAmount: { $gt: 0 },
         },
       },
       {
         $group: {
           _id: '$customer',
-          outstanding: {
-            $sum: { $subtract: [{ $ifNull: ['$finalAmount', 0] }, { $ifNull: ['$paidAmount', 0] }] },
-          },
+          outstanding: { $sum: { $ifNull: ['$balanceAmount', 0] } },
         },
       },
     ]);
