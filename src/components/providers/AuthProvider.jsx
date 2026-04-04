@@ -12,7 +12,7 @@ export function AuthProvider({ children }) {
   const router          = useRouter();
   const redirectedRef   = useRef(false);
 
-  // Verify session ONCE on mount
+  // Verify session once on mount for protected routes
   useEffect(() => {
     const isPublicPage =
       pathname === '/' ||
@@ -20,34 +20,36 @@ export function AuthProvider({ children }) {
       pathname.startsWith('/register');
 
     if (isPublicPage) {
+      // proxy.js handles redirecting authenticated users away from public pages
       useAuthStore.setState({ isLoading: false });
       return;
     }
 
+    // Protected route — verify session with server
     useAuthStore.getState().fetchUser();
 
-    // Safety net: never stuck on spinner longer than 10s
+    // Safety net: if fetchUser never resolves, stop after 8s
     const timeout = setTimeout(() => {
-      const { isLoading: still, isAuthenticated: authed } = useAuthStore.getState();
-      if (still && !authed) {
+      const state = useAuthStore.getState();
+      if (state.isLoading && !state.isAuthenticated) {
         useAuthStore.setState({ isLoading: false });
         window.location.replace('/login');
       }
-    }, 10_000);
+    }, 8_000);
 
     return () => clearTimeout(timeout);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // mount only
 
-  // Redirect unauthenticated users — use ref to prevent firing more than once
+  // Redirect unauthenticated users after loading completes
   useEffect(() => {
     if (!pathname.startsWith('/dashboard')) return;
     if (isLoading) return;
     if (isAuthenticated) {
-      redirectedRef.current = false; // reset on successful auth
+      redirectedRef.current = false;
       return;
     }
-    if (redirectedRef.current) return; // already redirected
+    if (redirectedRef.current) return;
     redirectedRef.current = true;
     router.replace('/login');
   }, [pathname, isAuthenticated, isLoading, router]);
@@ -65,15 +67,6 @@ export function AuthProvider({ children }) {
     }, 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [isAuthenticated]);
-
-  // Spinner on protected routes while loading
-  if (isLoading && pathname.startsWith('/dashboard')) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
-      </div>
-    );
-  }
 
   return <>{children}</>;
 }

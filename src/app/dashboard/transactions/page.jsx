@@ -731,6 +731,8 @@ export default function TransactionsPage() {
                             variant="outline"
                             size="sm"
                             onClick={() => handleEdit(transaction)}
+                            disabled={!!transaction.order}
+                            title={transaction.order ? "Invoice-linked transactions cannot be edited" : "Edit transaction"}
                           >
                             <Pencil className="h-3 w-3" />
                           </Button>

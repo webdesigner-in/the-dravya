@@ -5,6 +5,7 @@ import Order from '@/models/Order';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
 import { QUERY_LIMITS, QUERY_TIMEOUTS } from '@/lib/constants';
+import { escapeRegex } from '@/lib/sanitize';
 
 export async function GET(request) {
   let authUser;
@@ -39,9 +40,7 @@ export async function GET(request) {
 
     // DB-level search — no in-memory filtering
     if (search && search.trim()) {
-      const s = search.trim();
-
-      // Find matching customers and orders in parallel
+      const s = escapeRegex(search.trim());
       const [matchingCustomers, matchingOrders] = await Promise.all([
         (await import('@/models/Customer')).default
           .find({ $or: [{ name: { $regex: s, $options: 'i' } }, { phone: { $regex: s, $options: 'i' } }] })
@@ -49,7 +48,6 @@ export async function GET(request) {
         Order.find({ orderNumber: { $regex: `^${s}`, $options: 'i' } })
           .select('_id').lean().limit(QUERY_LIMITS.SEARCH_RESULTS).maxTimeMS(QUERY_TIMEOUTS.FAST),
       ]);
-
       const searchClauses = [
         { invoiceNumber: { $regex: s, $options: 'i' } },
         { 'guestInfo.name': { $regex: s, $options: 'i' } },
@@ -57,8 +55,6 @@ export async function GET(request) {
       ];
       if (matchingCustomers.length) searchClauses.push({ customer: { $in: matchingCustomers.map(c => c._id) } });
       if (matchingOrders.length)    searchClauses.push({ order:    { $in: matchingOrders.map(o => o._id) } });
-
-      // Merge with existing filter using $and so other filters still apply
       filter.$or = searchClauses;
     }
 

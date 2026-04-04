@@ -73,6 +73,22 @@ export async function POST(request) {
       );
     }
 
+    // Validate warehouse fields for transfer movements
+    if (type === 'transfer') {
+      if (!fromWarehouse || !toWarehouse) {
+        return NextResponse.json(
+          { error: 'Transfer movements require both fromWarehouse and toWarehouse' },
+          { status: 400 }
+        );
+      }
+      if (String(fromWarehouse) === String(toWarehouse)) {
+        return NextResponse.json(
+          { error: 'fromWarehouse and toWarehouse must be different for a transfer' },
+          { status: 400 }
+        );
+      }
+    }
+
     await connectDB();
 
     // Validate product exists

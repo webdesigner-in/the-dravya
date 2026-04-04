@@ -8,6 +8,7 @@ import { generateOrderNumber } from '@/lib/numberGenerator';
 import { parsePagination } from '@/lib/apiHelpers';
 import { createLogger } from '@/lib/logger';
 import { QUERY_LIMITS, QUERY_TIMEOUTS } from '@/lib/constants';
+import { escapeRegex } from '@/lib/sanitize';
 
 // Configure route for production
 export const maxDuration = 30; // Maximum execution time in seconds
@@ -67,11 +68,11 @@ export async function GET(request) {
     // Enhanced search - search by order number OR customer name
     if (search && search.trim()) {
       try {
-        // Find customers matching the search (with limit to prevent slowdown)
+        const safe = escapeRegex(search.trim());
         const matchingCustomers = await Customer.find({
           $or: [
-            { name: { $regex: search.trim(), $options: 'i' } },
-            { phone: { $regex: search.trim(), $options: 'i' } }
+            { name: { $regex: safe, $options: 'i' } },
+            { phone: { $regex: safe, $options: 'i' } }
           ]
         })
         .select('_id')
@@ -81,22 +82,20 @@ export async function GET(request) {
         
         const customerIds = matchingCustomers.map(c => c._id);
         
-        // Build search filter — use $and if customer $or already set
         const searchOr = customerIds.length > 0
           ? [
-              { orderNumber: { $regex: `^${search.trim()}`, $options: 'i' } },
+              { orderNumber: { $regex: `^${safe}`, $options: 'i' } },
               { customer: { $in: customerIds } },
-              { 'guestInfo.name':  { $regex: search.trim(), $options: 'i' } },
-              { 'guestInfo.phone': { $regex: search.trim(), $options: 'i' } },
+              { 'guestInfo.name':  { $regex: safe, $options: 'i' } },
+              { 'guestInfo.phone': { $regex: safe, $options: 'i' } },
             ]
           : [
-              { orderNumber: { $regex: `^${search.trim()}`, $options: 'i' } },
-              { 'guestInfo.name':  { $regex: search.trim(), $options: 'i' } },
-              { 'guestInfo.phone': { $regex: search.trim(), $options: 'i' } },
+              { orderNumber: { $regex: `^${safe}`, $options: 'i' } },
+              { 'guestInfo.name':  { $regex: safe, $options: 'i' } },
+              { 'guestInfo.phone': { $regex: safe, $options: 'i' } },
             ];
 
         if (filter.$or) {
-          // Already have a customer $or — combine with $and
           filter.$and = [{ $or: filter.$or }, { $or: searchOr }];
           delete filter.$or;
         } else {
@@ -104,8 +103,7 @@ export async function GET(request) {
         }
       } catch (searchError) {
         logger.error('Customer search error', searchError);
-        // Fallback to simple order number search if customer search fails
-        filter.orderNumber = { $regex: `^${search.trim()}`, $options: 'i' };
+        filter.orderNumber = { $regex: `^${escapeRegex(search.trim())}`, $options: 'i' };
       }
     }
 
@@ -232,6 +230,15 @@ export async function POST(request) {
           { status: 404 }
         );
       }
+
+      // Validate quantity is a positive integer
+      if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+        return NextResponse.json(
+          { error: `Invalid quantity for product ${product.name}: must be a positive integer` },
+          { status: 400 }
+        );
+      }
+
       productInfoMap[String(item.product)] = product;
 
       const originalPrice = parseFloat(product.price);
@@ -264,23 +271,30 @@ export async function POST(request) {
     const finalAmount = subtotalAtCustomPrice + taxAmount;
 
     // Credit limit check — must happen after finalAmount is known
+    // Calculate real outstanding from DB, not the stale field on the customer doc
     if (!isGuestOrder && customerDoc) {
       const creditLimit = parseFloat(customerDoc.creditLimit) || 0;
-      const currentOutstanding = parseFloat(customerDoc.outstandingBalance) || 0;
-      if (creditLimit > 0 && (currentOutstanding + finalAmount) > creditLimit) {
-        const availableCredit = Math.max(0, creditLimit - currentOutstanding);
-        return NextResponse.json(
-          {
-            error: 'Credit limit exceeded',
-            details: {
-              creditLimit: creditLimit.toFixed(2),
-              currentOutstanding: currentOutstanding.toFixed(2),
-              orderAmount: finalAmount.toFixed(2),
-              availableCredit: availableCredit.toFixed(2),
+      if (creditLimit > 0) {
+        const outstandingAgg = await Order.aggregate([
+          { $match: { customer: customerDoc._id, status: 'delivered' } },
+          { $group: { _id: null, total: { $sum: { $subtract: ['$finalAmount', '$paidAmount'] } } } },
+        ]);
+        const currentOutstanding = outstandingAgg[0]?.total || 0;
+        if (currentOutstanding + finalAmount > creditLimit) {
+          const availableCredit = Math.max(0, creditLimit - currentOutstanding);
+          return NextResponse.json(
+            {
+              error: 'Credit limit exceeded',
+              details: {
+                creditLimit: creditLimit.toFixed(2),
+                currentOutstanding: currentOutstanding.toFixed(2),
+                orderAmount: finalAmount.toFixed(2),
+                availableCredit: availableCredit.toFixed(2),
+              },
             },
-          },
-          { status: 400 }
-        );
+            { status: 400 }
+          );
+        }
       }
     }
 

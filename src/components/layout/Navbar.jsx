@@ -14,32 +14,14 @@ import {
 import { Avatar, AvatarFallback } from "../ui/avatar";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
-import { toast } from "sonner";
 
 export default function Navbar() {
   const user = useAuthStore((state) => state.user);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const isTokenExpired = useAuthStore((state) => state.isTokenExpired);
   const logout = useAuthStore((state) => state.logout);
   const router = useRouter();
 
-  // Check token expiration on mount and periodically
-  useEffect(() => {
-    const checkTokenExpiration = () => {
-      if (isAuthenticated && isTokenExpired()) {
-        toast.error("Your session has expired. Please login again.");
-        logout();
-        router.push("/login");
-      }
-    };
-
-    checkTokenExpiration();
-    const interval = setInterval(checkTokenExpiration, 60 * 1000);
-    return () => clearInterval(interval);
-  }, [isAuthenticated, isTokenExpired, logout, router]);
-
-  const showLoginButton = !isAuthenticated || isTokenExpired();
+  const showLoginButton = !isAuthenticated;
 
   const handleLogout = async () => {
     await logout();

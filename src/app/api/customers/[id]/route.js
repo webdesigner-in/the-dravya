@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Customer from '@/models/Customer';
+import Order from '@/models/Order';
+import Invoice from '@/models/Invoice';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
 
@@ -82,10 +84,31 @@ export async function DELETE(request, { params }) {
     await connectDB();
     const { id } = await params;
 
-    const customer = await Customer.findByIdAndDelete(id);
+    const customer = await Customer.findById(id);
     if (!customer) {
       return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
     }
+
+    // Prevent deletion if customer has associated orders or invoices
+    const [orderCount, invoiceCount] = await Promise.all([
+      Order.countDocuments({ customer: id }),
+      Invoice.countDocuments({ customer: id }),
+    ]);
+
+    if (orderCount > 0 || invoiceCount > 0) {
+      return NextResponse.json(
+        {
+          error: 'Cannot delete customer with existing orders or invoices',
+          details: {
+            orders: orderCount,
+            invoices: invoiceCount,
+          },
+        },
+        { status: 400 }
+      );
+    }
+
+    await customer.deleteOne();
 
     return NextResponse.json({ success: true, message: 'Customer deleted successfully' });
   } catch (error) {

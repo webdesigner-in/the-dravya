@@ -5,6 +5,8 @@ import { getAuthUser } from '@/lib/auth';
 import { errorResponse, parsePagination, buildPaginationResponse } from '@/lib/apiHelpers';
 import { createLogger } from '@/lib/logger';
 
+import { escapeRegex } from '@/lib/sanitize';
+
 const logger = createLogger('CustomersAPI');
 
 // GET all customers
@@ -34,7 +36,8 @@ export async function GET(request) {
 
     // Search filter - search across name, phone, email, area, city
     if (search && search.trim()) {
-      const searchRegex = new RegExp(search.trim(), 'i');
+      const safe = escapeRegex(search.trim());
+      const searchRegex = new RegExp(safe, 'i');
       filter.$or = [
         { name: searchRegex },
         { phone: searchRegex },
@@ -60,30 +63,34 @@ export async function GET(request) {
       Customer.countDocuments(filter)
     ]);
 
-    // Calculate actual outstanding balance from orders for each customer
+    // Calculate outstanding balance in ONE aggregation instead of N+1 queries
     const Order = (await import('@/models/Order')).default;
-    
-    const customersWithBalance = await Promise.all(
-      customers.map(async (customer) => {
-        // Calculate outstanding balance from delivered orders
-        const orders = await Order.find({
-          customer: customer._id,
+    const customerIds = customers.map(c => c._id);
+
+    const balances = await Order.aggregate([
+      {
+        $match: {
+          customer: { $in: customerIds },
           status: 'delivered',
-        })
-          .select('finalAmount paidAmount')
-          .lean();
-        
-        const actualOutstanding = orders.reduce((sum, order) => {
-          const due = parseFloat(order.finalAmount || 0) - parseFloat(order.paidAmount || 0);
-          return sum + due;
-        }, 0);
-        
-        return {
-          ...customer,
-          outstandingBalance: actualOutstanding,
-        };
-      })
-    );
+        },
+      },
+      {
+        $group: {
+          _id: '$customer',
+          outstanding: {
+            $sum: { $subtract: [{ $ifNull: ['$finalAmount', 0] }, { $ifNull: ['$paidAmount', 0] }] },
+          },
+        },
+      },
+    ]);
+
+    const balanceMap = {};
+    for (const b of balances) balanceMap[b._id.toString()] = b.outstanding;
+
+    const customersWithBalance = customers.map(c => ({
+      ...c,
+      outstandingBalance: balanceMap[c._id.toString()] || 0,
+    }));
 
     const response = buildPaginationResponse(customersWithBalance, totalCustomers, page, limit);
     

@@ -1532,6 +1532,7 @@ export default function OrdersPage() {
                           onValueChange={(value) =>
                             handleStatusChange(order._id, value)
                           }
+                          disabled={!!order.invoice?._id}
                         >
                           <SelectTrigger className="text-xs h-8 w-auto min-w-25">
                             <SelectValue />
@@ -1551,6 +1552,7 @@ export default function OrdersPage() {
                           onValueChange={(value) =>
                             handlePaymentStatusChange(order, value)
                           }
+                          disabled={!!order.invoice?._id}
                         >
                           <SelectTrigger className="text-xs h-8 w-auto min-w-22.5">
                             <SelectValue />
@@ -1597,6 +1599,30 @@ export default function OrdersPage() {
                               >
                                 <Plus className="h-3 w-3 mr-1" />
                                 Payment
+                              </Button>
+                            )}
+                            {isAdmin && order.invoice.paidAmount > 0 && order.invoice.status !== 'paid' && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={async () => {
+                                  if (!confirm(`Reset all payments on invoice ${order.invoice.invoiceNumber}?\n\nThis will mark the invoice as unpaid and create a reversal record.`)) return;
+                                  setIsSubmitting(true);
+                                  try {
+                                    await api.post(`/api/invoices/${order.invoice._id}/reset-payments`);
+                                    queryClient.invalidateQueries({ queryKey: ['orders'] });
+                                    toast.success("Payments reset successfully");
+                                  } catch (error) {
+                                    toast.error(getUserFriendlyError(error));
+                                  } finally {
+                                    setIsSubmitting(false);
+                                  }
+                                }}
+                                disabled={isSubmitting}
+                                className="text-xs h-8 border-orange-400 text-orange-600 hover:bg-orange-50"
+                              >
+                                <RotateCcw className="h-3 w-3 mr-1" />
+                                Reset
                               </Button>
                             )}
                           </>

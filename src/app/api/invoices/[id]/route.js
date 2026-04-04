@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Invoice from '@/models/Invoice';
-import Order from '@/models/Order';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
 
@@ -44,7 +43,7 @@ export async function PUT(request, { params }) {
 
     await connectDB();
     const { id } = await params;
-    const { status, paidAmount, dueDate, paymentTerms, notes, terms } = await request.json();
+    const { status, dueDate, paymentTerms, notes, terms } = await request.json();
 
     const invoice = await Invoice.findById(id);
     if (!invoice) {
@@ -57,27 +56,7 @@ export async function PUT(request, { params }) {
     if (notes !== undefined) invoice.notes        = notes;
     if (terms !== undefined) invoice.terms        = terms;
 
-    if (paidAmount !== undefined) {
-      invoice.paidAmount    = parseFloat(paidAmount);
-      invoice.balanceAmount = invoice.totalAmount - invoice.paidAmount;
-      invoice.status = invoice.paidAmount >= invoice.totalAmount ? 'paid'
-        : invoice.paidAmount > 0 ? 'partial'
-        : invoice.status;
-    }
-
     await invoice.save();
-
-    // Sync order payment status
-    if (paidAmount !== undefined) {
-      const order = await Order.findById(invoice.order);
-      if (order) {
-        order.paidAmount    = invoice.paidAmount;
-        order.paymentStatus = invoice.paidAmount >= invoice.totalAmount ? 'paid'
-          : invoice.paidAmount > 0 ? 'partial'
-          : 'unpaid';
-        await order.save();
-      }
-    }
 
     const updatedInvoice = await Invoice.findById(id)
       .populate('customer', 'name phone email address')

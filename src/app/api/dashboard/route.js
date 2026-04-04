@@ -191,27 +191,36 @@ export async function GET(request) {
     const overdueAmount = filteredOverdueInvoices.reduce((sum, inv) => sum + (inv.balanceAmount || 0), 0);
 
     // Calculate actual outstanding balance for customers with credit limits
-    const customersWithActualBalance = await Promise.all(
-      creditLimitWarnings.map(async (customer) => {
-        const orders = await Order.find({
-          customer: customer._id,
+    // Single aggregation instead of N+1 queries
+    const creditWarningIds = creditLimitWarnings.map(c => c._id);
+    const creditBalances = await Order.aggregate([
+      {
+        $match: {
+          customer: { $in: creditWarningIds },
           status: 'delivered',
-        })
-          .select('finalAmount paidAmount')
-          .lean();
-        
-        const actualOutstanding = orders.reduce((sum, order) => {
-          const due = parseFloat(order.finalAmount || 0) - parseFloat(order.paidAmount || 0);
-          return sum + due;
-        }, 0);
-        
-        return {
-          ...customer,
-          outstandingBalance: actualOutstanding,
-          utilization: (actualOutstanding / customer.creditLimit) * 100,
-        };
-      })
-    );
+        },
+      },
+      {
+        $group: {
+          _id: '$customer',
+          outstanding: {
+            $sum: { $subtract: [{ $ifNull: ['$finalAmount', 0] }, { $ifNull: ['$paidAmount', 0] }] },
+          },
+        },
+      },
+    ]);
+
+    const creditBalanceMap = {};
+    for (const b of creditBalances) creditBalanceMap[b._id.toString()] = b.outstanding;
+
+    const customersWithActualBalance = creditLimitWarnings.map(customer => {
+      const outstanding = creditBalanceMap[customer._id.toString()] || 0;
+      return {
+        ...customer,
+        outstandingBalance: outstanding,
+        utilization: (outstanding / customer.creditLimit) * 100,
+      };
+    });
 
     // Filter to only show customers with 70%+ utilization
     const filteredCreditWarnings = customersWithActualBalance

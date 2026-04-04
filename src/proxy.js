@@ -78,14 +78,17 @@ export async function proxy(request) {
     }
   }
 
-  // ── Auth pages — let the client handle redirecting authenticated users ──────
-  // Removing server-side redirect here prevents the loop where:
-  // client calls router.replace('/login') → proxy redirects back to /dashboard → loop
+  // ── Root path & login — redirect authenticated users to dashboard ────────────
+  if ((pathname === '/' || pathname.startsWith('/login')) && token) {
+    const payload = await verifyToken(token);
+    if (payload) {
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
+  }
 
   return NextResponse.next();
 }
 
 export const config = {
-  // Run on dashboard, auth pages, and API routes
-  matcher: ['/dashboard/:path*', '/login', '/register', '/api/:path*'],
+  matcher: ['/dashboard/:path*', '/login', '/register', '/api/:path*', '/'],
 };

@@ -6,7 +6,10 @@ import Product from '@/models/Product';
 import Invoice from '@/models/Invoice';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
+import { createLogger } from '@/lib/logger';
 import { QUERY_TIMEOUTS } from '@/lib/constants';
+
+const logger = createLogger('AnalyticsAPI');
 
 // GET analytics data
 export const maxDuration = 30; // Maximum execution time
@@ -104,12 +107,11 @@ export async function GET(request) {
       results.forEach((result, index) => {
         if (result.status === 'rejected') {
           const collections = ['orders', 'customers', 'products', 'invoices'];
-          console.error(`Failed to fetch ${collections[index]}:`, result.reason);
+          logger.error(`Failed to fetch ${collections[index]}`, result.reason);
         }
       });
     } catch (error) {
-      console.error('Analytics data fetch error:', error);
-      // Continue with empty arrays - analytics will show zeros
+      logger.error('Analytics data fetch error', error);
     }
 
     // Revenue Metrics - Calculate from Invoices only (proper accounting)

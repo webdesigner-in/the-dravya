@@ -2,8 +2,10 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Invoice from '@/models/Invoice';
 import Order from '@/models/Order';
+import Transaction from '@/models/Transaction';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
+import { generateTransactionNumber } from '@/lib/numberGenerator';
 
 // POST reset all payments on invoice
 export async function POST(request, { params }) {
@@ -12,10 +14,11 @@ export async function POST(request, { params }) {
     authUser = await getAuthUser();
 
     if (!authUser) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (authUser.role !== 'admin') {
+      return NextResponse.json({ error: 'Forbidden - Admin access only' }, { status: 403 });
     }
 
     await connectDB();
@@ -42,6 +45,9 @@ export async function POST(request, { params }) {
 
     // Store count before reset
     const previousPaymentCount = invoice.paymentHistory.length;
+
+    // Capture total paid amount before reset for the reversal transaction
+    const totalPaidBeforeReset = invoice.paidAmount;
 
     // Reset invoice payment amounts
     invoice.paidAmount = 0;
@@ -73,6 +79,26 @@ export async function POST(request, { params }) {
 
     // Note: We keep transactions in the system for audit purposes
     // They represent historical records of what happened
+
+    // Create a reversal Transaction record for the audit trail
+    if (totalPaidBeforeReset > 0) {
+      const invoiceNumber = invoice.invoiceNumber;
+      const orderRef = invoice.order;
+      await Transaction.create({
+        transactionNumber: generateTransactionNumber(),
+        type: 'income',
+        category: 'sale',
+        amount: totalPaidBeforeReset,
+        paymentMethod: 'cash',
+        paymentStatus: 'refunded',
+        order: orderRef._id || orderRef,
+        customer: invoice.customer || undefined,
+        description: `Payment reversal for invoice ${invoiceNumber}`,
+        notes: `REVERSAL: ${previousPaymentCount} payment(s) totalling ${totalPaidBeforeReset} voided by ${authUser.name || authUser.email}`,
+        date: new Date(),
+        createdBy: authUser.userId,
+      });
+    }
 
     // Populate and return updated invoice
     const updatedInvoice = await Invoice.findById(invoice._id)

@@ -8,35 +8,22 @@ const redirectToLogin = () => {
   }
 };
 
-const clearStorage = () => {
-  if (typeof window !== 'undefined') localStorage.removeItem('auth-storage');
-};
-
 export const useAuthStore = create(
   persist(
     (set, get) => ({
       user: null,
       isLoading: true,
       isAuthenticated: false,
-      tokenExpiry: null,
 
       clearUser: () => {
-        set({ user: null, isLoading: false, isAuthenticated: false, tokenExpiry: null });
-        clearStorage();
-      },
-
-      isTokenExpired: () => {
-        const { tokenExpiry } = get();
-        if (!tokenExpiry) return true;
-        return Date.now() > tokenExpiry;
+        set({ user: null, isLoading: false, isAuthenticated: false });
       },
 
       login: async (email, password) => {
         try {
           set({ isLoading: true });
           const data = await api.post('/api/auth/login', { email, password });
-          const tokenExpiry = Date.now() + (24 * 60 * 60 * 1000);
-          set({ user: data.user, isAuthenticated: true, tokenExpiry });
+          set({ user: data.user, isAuthenticated: true });
           await get().fetchUser();
           return { success: true, user: data.user };
         } catch (error) {
@@ -49,8 +36,7 @@ export const useAuthStore = create(
         try {
           set({ isLoading: true });
           const data = await api.post('/api/auth/register', userData);
-          const tokenExpiry = Date.now() + (24 * 60 * 60 * 1000);
-          set({ user: data.user, isLoading: false, isAuthenticated: true, tokenExpiry });
+          set({ user: data.user, isLoading: false, isAuthenticated: true });
           return { success: true, user: data.user };
         } catch (error) {
           set({ isLoading: false });
@@ -64,8 +50,7 @@ export const useAuthStore = create(
         } catch {
           // Even if logout API fails, clear local state
         } finally {
-          set({ user: null, isLoading: false, isAuthenticated: false, tokenExpiry: null });
-          clearStorage();
+          set({ user: null, isLoading: false, isAuthenticated: false });
         }
         return { success: true };
       },
@@ -73,20 +58,10 @@ export const useAuthStore = create(
       fetchUser: async () => {
         set({ isLoading: true });
         try {
-          // If token is expired or missing, don't even hit the API
-          if (get().isTokenExpired()) {
-            set({ user: null, isLoading: false, isAuthenticated: false, tokenExpiry: null });
-            clearStorage();
-            redirectToLogin();
-            return;
-          }
           const data = await api.get('/api/auth/me');
-          const tokenExpiry = get().tokenExpiry || Date.now() + (24 * 60 * 60 * 1000);
-          set({ user: data.user, isLoading: false, isAuthenticated: true, tokenExpiry });
+          set({ user: data.user, isLoading: false, isAuthenticated: true });
         } catch {
-          // Cookie invalid / expired / network error — clear and redirect
-          set({ user: null, isLoading: false, isAuthenticated: false, tokenExpiry: null });
-          clearStorage();
+          set({ user: null, isLoading: false, isAuthenticated: false });
           redirectToLogin();
         }
       },
@@ -105,15 +80,9 @@ export const useAuthStore = create(
     }),
     {
       name: 'auth-storage',
-      // Only persist tokenExpiry — never persist user data in localStorage
-      // The JWT is already secure in an httpOnly cookie
-      // User data is fetched fresh from /api/auth/me on every load
-      partialize: (state) => ({
-        tokenExpiry: state.tokenExpiry,
-      }),
+      partialize: () => ({}),
       onRehydrateStorage: () => (state) => {
         if (!state) return;
-        // Never restore user from localStorage — always verify with server
         state.user = null;
         state.isAuthenticated = false;
         state.isLoading = true;
