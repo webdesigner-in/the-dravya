@@ -66,7 +66,15 @@ export async function PUT(request, { params }) {
       updateData.password = await bcrypt.hash(password, 10);
     }
 
-    const user = await User.findByIdAndUpdate(id, updateData, { new: true, runValidators: true }).select('-password');
+    const mongoUpdate = { $set: updateData };
+    if (password && password.trim() !== '') {
+      mongoUpdate.$inc = { tokenVersion: 1 };
+    }
+
+    const user = await User.findByIdAndUpdate(id, mongoUpdate, {
+      new: true,
+      runValidators: true,
+    }).select('-password');
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }

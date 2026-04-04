@@ -32,8 +32,13 @@ export const DEBOUNCE_DELAYS = {
 
 // Rate Limiting
 export const RATE_LIMITS = {
-  LOGIN_ATTEMPTS: 10,           // Max login attempts
-  LOGIN_WINDOW_MS: 60 * 1000,   // 1 minute window
+  LOGIN_ATTEMPTS: 10,
+  LOGIN_WINDOW_MS: 60 * 1000,
+  REGISTER_ATTEMPTS: 5,
+  REGISTER_WINDOW_MS: 60 * 1000,
+  /** Global API requests per IP per window (proxy layer) */
+  API_GLOBAL_ATTEMPTS: 200,
+  API_GLOBAL_WINDOW_MS: 60 * 1000,
 };
 
 // Token Expiration

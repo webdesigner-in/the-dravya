@@ -19,8 +19,13 @@ const UserSchema = new mongoose.Schema(
     password: {
       type: String,
       required: [true, 'Please provide a password'],
-      minlength: 6,
+      minlength: 8,
       select: false,
+    },
+    tokenVersion: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
     role: {
       type: String,
@@ -54,10 +59,13 @@ const UserSchema = new mongoose.Schema(
   }
 );
 
-// Hash password before saving
+// Hash password before saving; invalidate other sessions when password changes
 UserSchema.pre('save', async function () {
   if (!this.isModified('password')) {
     return;
+  }
+  if (!this.isNew) {
+    this.tokenVersion = (this.tokenVersion ?? 0) + 1;
   }
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);

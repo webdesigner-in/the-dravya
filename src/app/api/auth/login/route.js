@@ -5,14 +5,11 @@ import { generateToken, setAuthCookie } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { RATE_LIMITS } from '@/lib/constants';
+import { getClientIp } from '@/lib/clientIp';
 
 export async function POST(request) {
   try {
-    // Rate-limit: 10 login attempts per minute per IP (shared across all instances)
-    const ip =
-      request.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
-      request.headers.get('x-real-ip') ||
-      'unknown';
+    const ip = getClientIp(request);
     const rl = await checkRateLimit(`login:${ip}`, RATE_LIMITS.LOGIN_ATTEMPTS, RATE_LIMITS.LOGIN_WINDOW_MS);
     if (!rl.allowed) {
       return NextResponse.json(
@@ -57,7 +54,11 @@ export async function POST(request) {
       );
     }
 
-    const token = generateToken(user._id.toString(), user.role);
+    const token = generateToken(
+      user._id.toString(),
+      user.role,
+      user.tokenVersion ?? 0
+    );
     await setAuthCookie(token);
 
     return NextResponse.json({

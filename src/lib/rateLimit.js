@@ -41,10 +41,9 @@ export async function checkRateLimit(key, limit = 100, windowMs = 60_000) {
       resetAt,
     };
   } catch (err) {
-    // Fail-open: if the DB check itself fails, let the request through rather
-    // than blocking legitimate users due to an infrastructure hiccup.
     console.error('[RateLimit] check failed:', err.message);
-    return { allowed: true, remaining: limit, resetAt: new Date(Date.now() + windowMs) };
+    const resetAt = new Date(Date.now() + windowMs);
+    return { allowed: false, remaining: 0, resetAt };
   }
 }
 

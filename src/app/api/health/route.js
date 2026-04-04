@@ -1,8 +1,13 @@
 import { NextResponse } from 'next/server';
-import connectDB from '@/lib/mongodb';
-import mongoose from 'mongoose';
 
+/** Public liveness — no infrastructure details in production. */
 export async function GET() {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ ok: true }, { status: 200 });
+  }
+
+  const connectDB = (await import('@/lib/mongodb')).default;
+  const mongoose = await import('mongoose');
   try {
     await connectDB();
     const isConnected = mongoose.connection.readyState === 1;

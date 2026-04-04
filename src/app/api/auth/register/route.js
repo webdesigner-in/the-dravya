@@ -3,9 +3,33 @@ import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
 import { generateToken, setAuthCookie } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
+import { checkRateLimit } from '@/lib/rateLimit';
+import { RATE_LIMITS } from '@/lib/constants';
+import { getClientIp } from '@/lib/clientIp';
+import { isPublicRegistrationAllowed } from '@/lib/publicRegistration';
 
 export async function POST(request) {
   try {
+    if (!isPublicRegistrationAllowed()) {
+      return NextResponse.json(
+        { error: 'Public registration is disabled. Contact an administrator.' },
+        { status: 403 }
+      );
+    }
+
+    const ip = getClientIp(request);
+    const rl = await checkRateLimit(
+      `register:${ip}`,
+      RATE_LIMITS.REGISTER_ATTEMPTS,
+      RATE_LIMITS.REGISTER_WINDOW_MS
+    );
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: 'Too many registration attempts. Please try again later.' },
+        { status: 429 }
+      );
+    }
+
     const { name, email, password, phone, address } = await request.json();
 
     if (!name || !email || !password) {
@@ -33,7 +57,6 @@ export async function POST(request) {
       );
     }
 
-    // Role is always 'distributor' for self-registration — never trust client-supplied role
     const user = await User.create({
       name,
       email,
@@ -43,20 +66,30 @@ export async function POST(request) {
       address,
     });
 
-    const token = generateToken(user._id.toString(), user.role);
+    const token = generateToken(
+      user._id.toString(),
+      user.role,
+      user.tokenVersion ?? 0
+    );
     await setAuthCookie(token);
 
-    return NextResponse.json({
-      success: true,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
+    return NextResponse.json(
+      {
+        success: true,
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+        },
       },
-    }, { status: 201 });
+      { status: 201 }
+    );
   } catch (error) {
-    const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to register user');
+    const { error: errorMessage, statusCode, details } = handleApiError(
+      error,
+      'Failed to register user'
+    );
     return NextResponse.json(
       { error: errorMessage, details },
       { status: statusCode }

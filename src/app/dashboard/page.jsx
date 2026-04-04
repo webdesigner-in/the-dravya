@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +36,11 @@ export default function DashboardPage() {
   const user = useAuthStore((state) => state.user);
   const isAdmin = useAuthStore((state) => state.isAdmin());
   const queryClient = useQueryClient();
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
   
   // Use React Query for dashboard data
   const { data: dashboardResponse, isLoading, error, refetch } = useDashboard();
@@ -122,12 +127,19 @@ export default function DashboardPage() {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-              <Badge variant={isAdmin ? "default" : "secondary"} className="text-xs">
-                {isAdmin ? "Admin View - All Data" : "Personal View"}
-              </Badge>
+              {isMounted ? (
+                <Badge variant={isAdmin ? "default" : "secondary"} className="text-xs">
+                  {isAdmin ? "Admin View - All Data" : "Personal View"}
+                </Badge>
+              ) : null}
             </div>
             <p className="text-muted-foreground mt-2">
-              Welcome back, {user?.name || "User"}! {isAdmin ? "You're viewing data from all users." : "Here's your personal data."}
+              Welcome back, {user?.name || "User"}!
+              {isMounted
+                ? isAdmin
+                  ? " You're viewing data from all users."
+                  : " Here's your personal data."
+                : ""}
             </p>
           </div>
           <div className="flex gap-2">
@@ -140,7 +152,7 @@ export default function DashboardPage() {
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
             </Button>
-            {isAdmin && (
+            {isMounted && isAdmin && (
               <Link href="/dashboard/analytics" className="shrink-0">
                 <Button variant="outline" className="w-full sm:w-auto">
                   View Analytics

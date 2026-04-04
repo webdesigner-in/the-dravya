@@ -36,7 +36,8 @@ export const useAuthStore = create(
         try {
           set({ isLoading: true });
           const data = await api.post('/api/auth/register', userData);
-          set({ user: data.user, isLoading: false, isAuthenticated: true });
+          set({ user: data.user, isAuthenticated: true });
+          await get().fetchUser();
           return { success: true, user: data.user };
         } catch (error) {
           set({ isLoading: false });

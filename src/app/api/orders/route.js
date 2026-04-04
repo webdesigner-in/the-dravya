@@ -9,6 +9,7 @@ import { parsePagination } from '@/lib/apiHelpers';
 import { createLogger } from '@/lib/logger';
 import { QUERY_LIMITS, QUERY_TIMEOUTS } from '@/lib/constants';
 import { escapeRegex } from '@/lib/sanitize';
+import { appendOrdersDatePresetFilter } from '@/lib/orderDateRangeFilter';
 
 // Configure route for production
 export const maxDuration = 30; // Maximum execution time in seconds
@@ -36,6 +37,8 @@ export async function GET(request) {
     const status = searchParams.get('status');
     const paymentStatus = searchParams.get('paymentStatus');
     const search = searchParams.get('search');
+    const sortBy = searchParams.get('sortBy') || 'date';
+    const datePreset = searchParams.get('date');
     const { page, limit, skip } = parsePagination(searchParams);
 
     // Build simple filter
@@ -107,19 +110,55 @@ export async function GET(request) {
       }
     }
 
-    // Simple query - no complex $or/$and
+    appendOrdersDatePresetFilter(filter, datePreset);
+
+    const orderListSelect =
+      'orderNumber orderType customer guestInfo items totalAmount finalAmount status paymentStatus paidAmount deliveryDate createdAt invoice';
+
+    const ordersQuery =
+      sortBy === 'orderNumber'
+        ? Order.find(filter)
+            .select(orderListSelect)
+            .populate('customer', 'name phone')
+            .populate('items.product', 'name')
+            .populate('invoice', 'invoiceNumber status balanceAmount paidAmount paymentHistory')
+            .sort({ orderNumber: -1 })
+            .skip(skip)
+            .limit(limit)
+            .lean()
+            .maxTimeMS(QUERY_TIMEOUTS.COMPLEX)
+        : (async () => {
+            // Sort by delivery date descending — later dates first (e.g. March above January).
+            // Not by createdAt. Missing deliveryDate falls back to createdAt for sorting.
+            const pipeline = [
+              { $match: filter },
+              {
+                $addFields: {
+                  _sortDelivery: { $ifNull: ['$deliveryDate', '$createdAt'] },
+                },
+              },
+              { $sort: { _sortDelivery: -1, createdAt: -1 } },
+              { $skip: skip },
+              { $limit: limit },
+              { $project: { _sortDelivery: 0 } },
+            ];
+            const raw = await Order.aggregate(pipeline).option({
+              maxTimeMS: QUERY_TIMEOUTS.COMPLEX,
+            });
+            return Order.populate(raw, [
+              { path: 'customer', select: 'name phone' },
+              { path: 'items.product', select: 'name' },
+              {
+                path: 'invoice',
+                select:
+                  'invoiceNumber status balanceAmount paidAmount paymentHistory',
+              },
+            ]);
+          })();
+
     const [orders, totalOrders] = await Promise.all([
-      Order.find(filter)
-        .select('orderNumber orderType customer guestInfo items totalAmount finalAmount status paymentStatus paidAmount deliveryDate createdAt invoice')
-        .populate('customer', 'name phone')
-        .populate('items.product', 'name')
-        .populate('invoice', 'invoiceNumber status balanceAmount paidAmount paymentHistory')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean()
-        .maxTimeMS(QUERY_TIMEOUTS.COMPLEX),
-      Order.countDocuments(filter).maxTimeMS(QUERY_TIMEOUTS.NORMAL)
+      ordersQuery,
+      Order.countDocuments(filter).maxTimeMS(QUERY_TIMEOUTS.NORMAL),
     ]);
 
     const totalPages = Math.ceil(totalOrders / limit);

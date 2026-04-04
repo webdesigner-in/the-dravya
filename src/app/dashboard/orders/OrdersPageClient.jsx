@@ -46,7 +46,6 @@ import {
   Search,
   Filter,
   FileText,
-  ShoppingCart,
   X,
   Eye,
   RefreshCw,
@@ -61,6 +60,7 @@ import { useOrders, useCreateOrder, useUpdateOrder, useDeleteOrder } from "@/hoo
 import { useQueryClient } from '@tanstack/react-query';
 import { generateUPIString, generateUPIQRCode } from "@/lib/upi";
 import api from "@/lib/apiClient";
+import OrdersOrdersList from "./OrdersOrdersList";
 
 export default function OrdersPageClient() {
   const searchParams = useSearchParams();
@@ -687,37 +687,26 @@ export default function OrdersPageClient() {
     }
   };
 
-  const getStatusColor = (status) => {
-    const colors = {
-      pending: "bg-yellow-100 text-yellow-700",
-      confirmed: "bg-blue-100 text-blue-700",
-      processing: "bg-purple-100 text-purple-700",
-      "out-for-delivery": "bg-orange-100 text-orange-700",
-      delivered: "bg-green-100 text-green-700",
-      cancelled: "bg-red-100 text-red-700",
-    };
-    return colors[status] || "bg-gray-100 text-gray-700";
-  };
-
-  const getPaymentStatusColor = (status) => {
-    const colors = {
-      unpaid: "bg-red-100 text-red-700",
-      partial: "bg-yellow-100 text-yellow-700",
-      paid: "bg-green-100 text-green-700",
-    };
-    return colors[status] || "bg-gray-100 text-gray-700";
-  };
-
   return (
     <div className="space-y-4 md:space-y-6 p-4 md:p-0">
       <PageHeader
         title={customerIdFromUrl && selectedCustomerName ? `Orders - ${selectedCustomerName}` : "Orders"}
-        description={customerIdFromUrl ? `Viewing orders for ${selectedCustomerName || "customer"}` : (isAdmin ? "Viewing all orders from all users" : "Manage and track your orders")}
+        description={
+          customerIdFromUrl
+            ? `Viewing orders for ${selectedCustomerName || "customer"}`
+            : isMounted
+              ? isAdmin
+                ? "Viewing all orders from all users"
+                : "Manage and track your orders"
+              : "Manage and track your orders"
+        }
         backHref={customerIdFromUrl ? "/dashboard/customers" : "/dashboard"}
         badge={
-          <Badge variant={isAdmin ? "default" : "secondary"} className="text-xs">
-            {isAdmin ? "All Users" : "Personal"}
-          </Badge>
+          isMounted ? (
+            <Badge variant={isAdmin ? "default" : "secondary"} className="text-xs">
+              {isAdmin ? "All Users" : "Personal"}
+            </Badge>
+          ) : null
         }
         actions={
           <Dialog
@@ -1311,7 +1300,7 @@ export default function OrdersPageClient() {
                 <SelectValue placeholder="Sort By" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="date">Sort by Date</SelectItem>
+                <SelectItem value="date">Sort by delivery date</SelectItem>
                 <SelectItem value="orderNumber">Sort by Order #</SelectItem>
               </SelectContent>
             </Select>
@@ -1355,331 +1344,31 @@ export default function OrdersPageClient() {
         </CardContent>
       </Card>
 
-      {/* Orders List */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg md:text-xl">All Orders</CardTitle>
-          <CardDescription className="text-sm">
-            {orders.length > 0 ? (
-              <>
-                Showing {orders.length} order(s)
-                {hasNextPage && !searchQuery && (
-                  <span className="text-muted-foreground"> • Scroll down to load more</span>
-                )}
-              </>
-            ) : (
-              "Your orders will appear here"
-            )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-2 sm:p-6">
-          {isLoading && orders.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 gap-3">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-              <p className="text-sm text-muted-foreground">Loading orders...</p>
-            </div>
-          ) : error ? (
-            <div className="text-center py-8">
-              <p className="text-red-600">Failed to load orders</p>
-              <p className="text-sm text-muted-foreground mt-2">{error.message}</p>
-            </div>
-          ) : orders.length === 0 ? (
-            <div className="text-center py-8">
-              <ShoppingCart className="mx-auto h-12 w-12 text-gray-400" />
-              <p className="mt-2 text-muted-foreground">No orders found</p>
-            </div>
-          ) : (
-            <>
-              <div className="space-y-3 md:space-y-4">
-                {orders.map((order) => (
-                <Card key={order._id} className="hover:shadow-md transition-shadow overflow-hidden">
-                  <CardContent className="p-3 md:p-4">
-                    <div className="flex flex-col gap-4">
-                      {/* Order Header */}
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-base md:text-lg font-semibold">
-                          {order.orderNumber}
-                        </h3>
-                        {(order.orderType === "guest") && (
-                          <span className="text-xs px-2 py-1 rounded bg-purple-100 text-purple-700">
-                            Guest
-                          </span>
-                        )}
-                        <span
-                          className={`text-xs px-2 py-1 rounded capitalize ${getStatusColor(
-                            order.status
-                          )}`}
-                        >
-                          {order.status}
-                        </span>
-                        <span
-                          className={`text-xs px-2 py-1 rounded capitalize ${getPaymentStatusColor(
-                            order.paymentStatus
-                          )}`}
-                        >
-                          {order.paymentStatus}
-                        </span>
-                        {order.invoice && order.invoice._id && (
-                          <>
-                            <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 flex items-center gap-1">
-                              <FileText className="h-3 w-3" />
-                              Invoiced
-                            </span>
-                            {/* Invoice Payment Status Badge */}
-                            {order.invoice.status === 'paid' && (
-                              <span className="text-xs px-2 py-1 rounded bg-green-100 text-green-700 font-medium">
-                                ✓ Invoice Paid
-                              </span>
-                            )}
-                            {order.invoice.status === 'partial' && (
-                              <span className="text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-700 font-medium">
-                                ⚠ Partial Payment
-                              </span>
-                            )}
-                            {(order.invoice.status === 'sent' || order.invoice.status === 'draft') && order.invoice.balanceAmount > 0 && (
-                              <span className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 font-medium">
-                                ✗ Invoice Unpaid
-                              </span>
-                            )}
-                          </>
-                        )}
-                      </div>
-
-                      {/* Order Details */}
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs sm:text-sm">
-                        <div>
-                          <span className="text-muted-foreground block">
-                            {(order.orderType === "guest") ? "Guest:" : "Customer:"}
-                          </span>
-                          <p className="font-medium truncate">
-                            {(order.orderType === "guest") 
-                              ? order.guestInfo?.name || "Guest Customer"
-                              : order.customer?.name}
-                          </p>
-                          {(order.orderType === "guest") && order.guestInfo?.phone && (
-                            <p className="text-xs text-muted-foreground">{order.guestInfo.phone}</p>
-                          )}
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block">Total:</span>
-                          <p className="font-medium">₹{parseFloat(order.finalAmount).toFixed(2)}</p>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block">Paid:</span>
-                          <p className="font-medium text-green-600">₹{parseFloat(order.paidAmount || 0).toFixed(2)}</p>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block">Due:</span>
-                          <p className="font-medium text-red-600">₹{(parseFloat(order.finalAmount) - parseFloat(order.paidAmount || 0)).toFixed(2)}</p>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block">Items:</span>
-                          <p className="font-medium">{order.items.length}</p>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block">
-                            {order.deliveryDate ? "Delivery Date:" : "Order Date:"}
-                          </span>
-                          <p className="font-medium">
-                            {formatDate(order.deliveryDate || order.createdAt)}
-                          </p>
-                        </div>
-                        {/* Show invoice payment info if invoice exists */}
-                        {order.invoice && order.invoice._id && (
-                          <>
-                            <div className="col-span-2 sm:col-span-3 pt-2 border-t">
-                              <span className="text-muted-foreground block text-xs">Invoice Status:</span>
-                              <div className="flex items-center gap-2 mt-1">
-                                <p className="font-medium text-sm">{order.invoice.invoiceNumber || 'N/A'}</p>
-                                <Badge className={`text-xs ${
-                                  order.invoice.status === 'paid' ? 'bg-green-100 text-green-700' :
-                                  order.invoice.status === 'partial' ? 'bg-yellow-100 text-yellow-700' :
-                                  'bg-red-100 text-red-700'
-                                }`}>
-                                  {order.invoice.status === 'paid' ? 'Paid' :
-                                   order.invoice.status === 'partial' ? 'Partial' : 'Unpaid'}
-                                </Badge>
-                                {order.invoice.paymentHistory && order.invoice.paymentHistory.length > 0 && (
-                                  <span className="text-xs text-muted-foreground">
-                                    ({order.invoice.paymentHistory.length} payment{order.invoice.paymentHistory.length > 1 ? 's' : ''})
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </>
-                        )}
-                      </div>
-
-                      {/* Action Buttons - Compact Layout */}
-                      <div className="flex flex-wrap gap-2 pt-2 border-t">
-                        {/* Primary Actions */}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setSelectedOrder(order);
-                            setIsViewOrderDialogOpen(true);
-                          }}
-                          className="text-xs h-8"
-                        >
-                          <Eye className="h-3 w-3 mr-1" />
-                          View
-                        </Button>
-                        
-                        {/* Status Dropdowns - Compact */}
-                        <Select
-                          value={order.status}
-                          onValueChange={(value) =>
-                            handleStatusChange(order._id, value)
-                          }
-                          disabled={!!order.invoice?._id}
-                        >
-                          <SelectTrigger className="text-xs h-8 w-auto min-w-25">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="pending">Pending</SelectItem>
-                            <SelectItem value="confirmed">Confirmed</SelectItem>
-                            <SelectItem value="processing">Processing</SelectItem>
-                            <SelectItem value="out-for-delivery">Out for Delivery</SelectItem>
-                            <SelectItem value="delivered">Delivered</SelectItem>
-                            <SelectItem value="cancelled">Cancelled</SelectItem>
-                          </SelectContent>
-                        </Select>
-
-                        <Select
-                          value={order.paymentStatus}
-                          onValueChange={(value) =>
-                            handlePaymentStatusChange(order, value)
-                          }
-                          disabled={!!order.invoice?._id}
-                        >
-                          <SelectTrigger className="text-xs h-8 w-auto min-w-22.5">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="unpaid">Unpaid</SelectItem>
-                            <SelectItem value="partial">Partial</SelectItem>
-                            <SelectItem value="paid">Paid</SelectItem>
-                          </SelectContent>
-                        </Select>
-
-                        {/* Invoice Actions */}
-                        {order.invoice && order.invoice._id ? (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="default"
-                              onClick={() => {
-                                if (order.invoice && order.invoice._id) {
-                                  window.location.href = `/dashboard/invoices/${order.invoice._id}`;
-                                } else {
-                                  toast.error("Invoice ID not found");
-                                }
-                              }}
-                              className="text-xs h-8"
-                            >
-                              <FileText className="h-3 w-3 mr-1" />
-                              Invoice
-                            </Button>
-                            {order.invoice.status !== 'paid' && order.invoice.balanceAmount > 0 && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setSelectedInvoice(order.invoice);
-                                  setSelectedOrder(order);
-                                  setPaymentAmount("");
-                                  setPaymentMethod("cash");
-                                  setPaymentNotes("");
-                                  setTransactionId("");
-                                  setIsRecordPaymentDialogOpen(true);
-                                }}
-                                className="text-xs h-8 border-green-500 text-green-600 hover:bg-green-50"
-                              >
-                                <Plus className="h-3 w-3 mr-1" />
-                                Payment
-                              </Button>
-                            )}
-                            {isAdmin && order.invoice.paidAmount > 0 && order.invoice.status !== 'paid' && (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={async () => {
-                                  if (!confirm(`Reset all payments on invoice ${order.invoice.invoiceNumber}?\n\nThis will mark the invoice as unpaid and create a reversal record.`)) return;
-                                  setIsSubmitting(true);
-                                  try {
-                                    await api.post(`/api/invoices/${order.invoice._id}/reset-payments`);
-                                    queryClient.invalidateQueries({ queryKey: ['orders'] });
-                                    toast.success("Payments reset successfully");
-                                  } catch (error) {
-                                    toast.error(getUserFriendlyError(error));
-                                  } finally {
-                                    setIsSubmitting(false);
-                                  }
-                                }}
-                                disabled={isSubmitting}
-                                className="text-xs h-8 border-orange-400 text-orange-600 hover:bg-orange-50"
-                              >
-                                <RotateCcw className="h-3 w-3 mr-1" />
-                                Reset
-                              </Button>
-                            )}
-                          </>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setSelectedOrder(order);
-                              setIsInvoiceDialogOpen(true);
-                            }}
-                            className="text-xs h-8"
-                          >
-                            <FileText className="h-3 w-3 mr-1" />
-                            Create Invoice
-                          </Button>
-                        )}
-
-                        {/* Delete Button - Only for Cancelled Orders and Admin Only */}
-                        {order.status === 'cancelled' && isAdmin && (
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => handleDeleteClick(order)}
-                            className="text-xs h-8"
-                          >
-                            <Trash2 className="h-3 w-3 mr-1" />
-                            Delete
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-                ))}
-              </div>
-              
-              {/* Infinite Scroll Loading Indicator */}
-              {isFetchingNextPage && (
-                <div className="flex flex-col items-center justify-center py-6 gap-2">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
-                  <p className="text-sm text-muted-foreground">Loading more orders...</p>
-                </div>
-              )}
-              
-              {/* End of Results Indicator */}
-              {!hasNextPage && orders.length > 0 && !searchQuery && (
-                <div className="text-center py-6">
-                  <p className="text-sm text-muted-foreground">
-                    You've reached the end of all orders
-                  </p>
-                </div>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+      <OrdersOrdersList
+        orders={orders}
+        isLoading={isLoading}
+        error={error}
+        hasNextPage={hasNextPage}
+        searchQuery={searchQuery}
+        isFetchingNextPage={isFetchingNextPage}
+        formatDate={formatDate}
+        isAdmin={isAdmin}
+        isSubmitting={isSubmitting}
+        setSelectedOrder={setSelectedOrder}
+        setIsViewOrderDialogOpen={setIsViewOrderDialogOpen}
+        handleStatusChange={handleStatusChange}
+        handlePaymentStatusChange={handlePaymentStatusChange}
+        setSelectedInvoice={setSelectedInvoice}
+        setPaymentAmount={setPaymentAmount}
+        setPaymentMethod={setPaymentMethod}
+        setPaymentNotes={setPaymentNotes}
+        setTransactionId={setTransactionId}
+        setIsRecordPaymentDialogOpen={setIsRecordPaymentDialogOpen}
+        setIsInvoiceDialogOpen={setIsInvoiceDialogOpen}
+        handleDeleteClick={handleDeleteClick}
+        invalidateOrders={() => queryClient.invalidateQueries({ queryKey: ['orders'] })}
+        setIsSubmitting={setIsSubmitting}
+      />
 
       {/* Create Invoice Dialog */}
       <Dialog open={isInvoiceDialogOpen} onOpenChange={setIsInvoiceDialogOpen}>

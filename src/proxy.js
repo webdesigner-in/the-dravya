@@ -1,67 +1,70 @@
 import { NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 import { checkRateLimit } from '@/lib/rateLimit';
+import { RATE_LIMITS } from '@/lib/constants';
+import { getClientIp } from '@/lib/clientIp';
 
 const PROTECTED_PATHS = ['/dashboard'];
-const AUTH_PATHS      = ['/login', '/register'];
+const AUTH_PATHS = ['/login', '/register'];
 
 /**
- * Verify a JWT token using jose (Edge-compatible — no Node.js crypto APIs).
- * Returns the decoded payload or null if invalid / expired.
+ * Verify a JWT (Edge-compatible). Must match HS256 + JWT_SECRET used in @/lib/auth.
  */
 async function verifyToken(token) {
   try {
     const secret = new TextEncoder().encode(process.env.JWT_SECRET);
-    const { payload } = await jwtVerify(token, secret);
+    const { payload } = await jwtVerify(token, secret, { algorithms: ['HS256'] });
     return payload;
   } catch {
     return null;
   }
 }
 
+function retryAfterSeconds(rl) {
+  const sec = Math.ceil((rl.resetAt.getTime() - Date.now()) / 1000);
+  return Math.max(1, sec);
+}
+
 /**
  * Next.js 16+ Proxy (formerly Middleware).
- *
- * • Rate limiting for API routes
- * • Unauthenticated requests to /dashboard/* → redirect to /login
- * • Expired / invalid JWT → clear the cookie and redirect to /login
- * • Already-authenticated users hitting /login or /register → redirect to /dashboard
  */
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get('auth-token')?.value;
 
-  // ── Rate Limiting for API routes ──────────────────────────────────────────────────────────
-  // Only apply to data-mutating and data-fetching endpoints, skip health and auth checks
-  const skipRateLimit = pathname === '/api/health' || pathname === '/api/auth/me';
+  const skipRateLimit =
+    pathname === '/api/health' ||
+    pathname === '/api/health/ready' ||
+    pathname === '/api/auth/me' ||
+    pathname === '/api/auth/login' ||
+    pathname === '/api/auth/register';
 
   if (pathname.startsWith('/api') && !skipRateLimit) {
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0].trim() || 
-               request.headers.get('x-real-ip') || 
-               'unknown';
-    
-    const rl = await checkRateLimit(`api:${ip}`, 100, 60_000);
-    
+    const ip = getClientIp(request);
+    const rl = await checkRateLimit(
+      `api:${ip}`,
+      RATE_LIMITS.API_GLOBAL_ATTEMPTS,
+      RATE_LIMITS.API_GLOBAL_WINDOW_MS
+    );
+
     if (!rl.allowed) {
+      const retry = retryAfterSeconds(rl);
       return NextResponse.json(
-        { 
+        {
           error: 'Too many requests. Please try again later.',
-          retryAfter: Math.ceil(rl.resetIn / 1000)
+          retryAfter: retry,
         },
-        { 
+        {
           status: 429,
-          headers: {
-            'Retry-After': String(Math.ceil(rl.resetIn / 1000))
-          }
+          headers: { 'Retry-After': String(retry) },
         }
       );
     }
   }
 
-  const isProtected = PROTECTED_PATHS.some(p => pathname.startsWith(p));
-  const isAuthPage  = AUTH_PATHS.some(p => pathname.startsWith(p));
+  const isProtected = PROTECTED_PATHS.some((p) => pathname.startsWith(p));
+  const isAuthPage = AUTH_PATHS.some((p) => pathname.startsWith(p));
 
-  // ── Protected routes ──────────────────────────────────────────────────────────────────────
   if (isProtected) {
     if (!token) {
       const loginUrl = new URL('/login', request.url);
@@ -71,15 +74,18 @@ export async function proxy(request) {
 
     const payload = await verifyToken(token);
     if (!payload) {
-      // Token invalid or expired — clear cookie and redirect
       const response = NextResponse.redirect(new URL('/login', request.url));
       response.cookies.delete('auth-token');
       return response;
     }
   }
 
-  // ── Root path & login — redirect authenticated users to dashboard ────────────
-  if ((pathname === '/' || pathname.startsWith('/login')) && token) {
+  if (
+    (pathname === '/' ||
+      pathname.startsWith('/login') ||
+      pathname.startsWith('/register')) &&
+    token
+  ) {
     const payload = await verifyToken(token);
     if (payload) {
       return NextResponse.redirect(new URL('/dashboard', request.url));
