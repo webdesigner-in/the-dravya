@@ -155,9 +155,9 @@ export function AppSidebar() {
 
   return (
     <Sidebar>
-      <SidebarHeader className="p-4 pb-3">
-        <Link href="/" className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold tracking-wide py-1">
+      <SidebarHeader className="p-3 pb-2 sm:p-4 sm:pb-3">
+        <Link href="/" className="flex min-w-0 items-center gap-2">
+          <h1 className="truncate text-lg font-bold tracking-wide py-0.5 sm:text-xl md:text-2xl">
             Dravya
           </h1>
         </Link>
@@ -214,10 +214,10 @@ export function AppSidebar() {
         )}
       </SidebarContent>
 
-      <SidebarFooter className="p-4 pt-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0 flex-1">
-            <Avatar className="shrink-0">
+      <SidebarFooter className="p-3 pt-2 sm:p-4 sm:pt-3">
+        <div className="flex items-center justify-between gap-2 sm:gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+            <Avatar className="size-8 shrink-0 sm:size-10">
               <AvatarFallback>
                 {isLoading ? '…' : user?.name?.charAt(0).toUpperCase() || 'U'}
               </AvatarFallback>

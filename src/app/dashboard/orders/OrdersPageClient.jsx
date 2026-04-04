@@ -688,7 +688,7 @@ export default function OrdersPageClient() {
   };
 
   return (
-    <div className="space-y-4 md:space-y-6 p-4 md:p-0">
+    <div className="space-y-3 py-1 sm:space-y-4 sm:py-0 md:space-y-6 md:p-0">
       <PageHeader
         title={customerIdFromUrl && selectedCustomerName ? `Orders - ${selectedCustomerName}` : "Orders"}
         description={

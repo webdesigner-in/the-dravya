@@ -46,7 +46,7 @@ export default function RegisterClient() {
   };
 
   return (
-    <Card className="w-full max-w-sm mx-auto my-8">
+    <Card className="mx-auto my-6 w-full max-w-[min(24rem,calc(100vw-1rem))] sm:my-8">
       <CardHeader>
         <CardTitle>Create account</CardTitle>
         <CardDescription>Only available when your administrator enables registration</CardDescription>

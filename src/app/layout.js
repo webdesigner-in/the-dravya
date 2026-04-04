@@ -22,19 +22,30 @@ export const metadata = {
   description: "Manage Money, Stock , Distribution From a single Application",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={bauhausFont.variable}>
-      
-      <body className={bauhausFont.className}>
-       <ErrorBoundary>
-         <QueryProvider>
-           <AuthProvider>
-             <TooltipProvider>{children}</TooltipProvider>
-             <Toaster position="top-right" />     
-           </AuthProvider>
-         </QueryProvider>
-       </ErrorBoundary>
+      <body
+        className={`${bauhausFont.className} min-h-dvh overflow-x-hidden antialiased`}
+      >
+        <ErrorBoundary>
+          <QueryProvider>
+            <AuthProvider>
+              <TooltipProvider>{children}</TooltipProvider>
+              <Toaster
+                position="top-right"
+                className="!top-[max(0.5rem,env(safe-area-inset-top))] !right-[max(0.5rem,env(safe-area-inset-right))]"
+                toastOptions={{ className: "text-sm max-w-[min(20rem,calc(100vw-1.5rem))]" }}
+              />
+            </AuthProvider>
+          </QueryProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

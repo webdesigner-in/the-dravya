@@ -29,18 +29,18 @@ export default function Navbar() {
   };
 
   return (
-    <header className="sticky top-4 z-50 w-full flex justify-center px-4 mb-8">
+    <header className="sticky z-50 w-full flex justify-center mb-4 md:mb-8 pt-[max(0.25rem,env(safe-area-inset-top))] px-0 sm:px-2">
       <nav
-        className="w-full max-w-6xl flex items-center justify-between px-6 py-3 rounded-xl 
-        bg-white/70 backdrop-blur-xl 
-        border border-gray-200/60 
-        shadow-lg 
-        transition-all duration-300 hover:shadow-xl"
+        className="w-full max-w-6xl flex min-w-0 items-center justify-between gap-2 rounded-lg md:rounded-xl px-3 py-2 sm:px-4 sm:py-2.5 md:px-5 md:py-3
+        bg-white/70 backdrop-blur-xl
+        border border-gray-200/60
+        shadow-md md:shadow-lg
+        transition-all duration-300 md:hover:shadow-xl"
       >
         {/* Brand */}
-        <div className="flex items-center">
-          <Link href={"/"} className="flex items-center gap-2">
-            <h1 className="text-xl md:text-2xl font-bold tracking-wide text-gray-900">
+        <div className="flex min-w-0 items-center shrink">
+          <Link href={"/"} className="flex min-w-0 items-center gap-2">
+            <h1 className="truncate text-lg sm:text-xl md:text-2xl font-bold tracking-wide text-gray-900">
               Dravya
             </h1>
           </Link>
@@ -50,7 +50,7 @@ export default function Navbar() {
         {!showLoginButton && user ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+              <Button variant="ghost" className="relative h-9 w-9 shrink-0 rounded-full sm:h-10 sm:w-10">
                 <Avatar>
                   <AvatarFallback className="bg-gray-900 text-white">
                     {user.name?.charAt(0).toUpperCase() || "U"}
@@ -58,7 +58,10 @@ export default function Navbar() {
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuContent
+              align="end"
+              className="w-[min(14rem,calc(100vw-1.5rem))] sm:w-56"
+            >
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
                   <p className="text-sm font-medium leading-none">{user.name}</p>
@@ -89,17 +92,15 @@ export default function Navbar() {
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (
-          <div className="flex items-center">
-            <Link href="/login">
+          <div className="flex shrink-0 items-center">
+            <Link href="/login" className="min-w-0">
               <Button
                 variant="secondary"
-                className="flex items-center gap-2 rounded-lg 
-              bg-gray-900 text-white 
-              hover:bg-gray-800 
-              shadow-md transition-all duration-300 px-5 py-2"
+                size="sm"
+                className="flex items-center gap-1.5 rounded-lg bg-gray-900 px-3 py-2 text-white shadow-md transition-all hover:bg-gray-800 sm:gap-2 sm:px-4 md:px-5"
               >
-                <LogInIcon size={18} />
-                <span className="font-medium">Login</span>
+                <LogInIcon className="size-4 shrink-0 sm:size-[18px]" />
+                <span className="font-medium text-sm sm:text-base">Login</span>
               </Button>
             </Link>
           </div>

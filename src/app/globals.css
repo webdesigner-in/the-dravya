@@ -121,6 +121,9 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
   body {
     @apply bg-background text-foreground;
   }
@@ -151,9 +154,9 @@
     white-space: nowrap;
   }
   
-  /* Ensure proper spacing in cards */
+  /* Compact on phones / curved edges; relax on larger screens */
   [data-slot="card-content"] {
-    @apply p-4 md:p-6;
+    @apply p-3 sm:p-4 md:p-6;
   }
   
   /* Better button spacing */
