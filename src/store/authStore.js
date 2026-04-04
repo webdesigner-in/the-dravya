@@ -14,6 +14,14 @@ const isAuthenticationError = (error) => AUTH_ERROR_STATUSES.has(error?.status);
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const clearServerAuthCookie = async () => {
+  try {
+    await api.post('/api/auth/logout');
+  } catch {
+    // Best effort: if logout fails we still clear local auth state below.
+  }
+};
+
 export const useAuthStore = create(
   persist(
     (set, get) => ({
@@ -24,6 +32,12 @@ export const useAuthStore = create(
 
       clearUser: () => {
         set({ user: null, isLoading: false, isAuthenticated: false, authError: null });
+      },
+
+      handleAuthFailure: async () => {
+        await clearServerAuthCookie();
+        set({ user: null, isLoading: false, isAuthenticated: false, authError: null });
+        redirectToLogin();
       },
 
       login: async (email, password) => {
@@ -73,8 +87,7 @@ export const useAuthStore = create(
             return { success: true, user: data.user };
           } catch (error) {
             if (isAuthenticationError(error)) {
-              set({ user: null, isLoading: false, isAuthenticated: false, authError: null });
-              redirectToLogin();
+              await get().handleAuthFailure();
               return { success: false, isAuthError: true, error };
             }
 

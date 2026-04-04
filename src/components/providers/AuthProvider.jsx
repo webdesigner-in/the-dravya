@@ -55,8 +55,7 @@ export function AuthProvider({ children }) {
         await api.get("/api/auth/me");
       } catch (error) {
         if (error?.status === 401 || error?.status === 403) {
-          useAuthStore.getState().clearUser();
-          router.replace("/login");
+          await useAuthStore.getState().handleAuthFailure();
         }
       }
     }, 5 * 60 * 1000);
