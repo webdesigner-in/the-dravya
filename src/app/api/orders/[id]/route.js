@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import Order from '@/models/Order';
 import Product from '@/models/Product';
+import Invoice from '@/models/Invoice';
 import { getAuthUser } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
 import { createLogger } from '@/lib/logger';
@@ -153,6 +154,67 @@ export async function PUT(request, { params }) {
 
     if (!order) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
+
+    // If the order already has an invoice, keep its financial snapshot in sync
+    // with the edited order to avoid ledger/report mismatches.
+    if (order.invoice && body.items) {
+      const invoice = await Invoice.findById(order.invoice);
+
+      if (invoice) {
+        const invoiceItems = order.items.map((item) => ({
+          product: item.product?._id || item.product,
+          description: item.product?.name || item.description || 'Product',
+          quantity: item.quantity,
+          price: item.price,
+          originalPrice: item.originalPrice,
+          discountPercentage: item.discountPercentage || 0,
+          subtotal: item.subtotal,
+        }));
+
+        const currentPaidAmount = Math.min(invoice.paidAmount || 0, order.finalAmount || 0);
+        const nextStatus =
+          currentPaidAmount >= (order.finalAmount || 0)
+            ? 'paid'
+            : currentPaidAmount > 0
+              ? 'partial'
+              : 'sent';
+
+        invoice.items = invoiceItems;
+        invoice.subtotal = order.totalAmount || 0;
+        invoice.discount = order.discount || 0;
+        invoice.tax = order.tax || 0;
+        invoice.totalAmount = order.finalAmount || 0;
+        invoice.paidAmount = currentPaidAmount;
+        invoice.balanceAmount = Math.max((order.finalAmount || 0) - currentPaidAmount, 0);
+        invoice.status = nextStatus;
+        if (nextStatus === 'paid') {
+          invoice.dueDate = null;
+        }
+        if (order.orderType === 'guest') {
+          invoice.guestInfo = order.guestInfo;
+          invoice.customer = undefined;
+        } else {
+          invoice.customer = order.customer;
+          invoice.guestInfo = undefined;
+        }
+        await invoice.save();
+
+        if (order.paidAmount !== currentPaidAmount || order.paymentStatus !== (currentPaidAmount >= (order.finalAmount || 0)
+          ? 'paid'
+          : currentPaidAmount > 0
+            ? 'partial'
+            : 'unpaid')) {
+          order.paidAmount = currentPaidAmount;
+          order.paymentStatus =
+            currentPaidAmount >= (order.finalAmount || 0)
+              ? 'paid'
+              : currentPaidAmount > 0
+                ? 'partial'
+                : 'unpaid';
+          await order.save();
+        }
+      }
     }
 
     return NextResponse.json({ success: true, order, message: 'Order updated successfully' });

@@ -161,11 +161,32 @@ export async function GET(request) {
       Order.countDocuments(filter).maxTimeMS(QUERY_TIMEOUTS.NORMAL),
     ]);
 
+    const normalizedOrders = orders.map((order) => {
+      const invoiceTotalAmount = Number(order.invoice?.totalAmount);
+      const invoicePaidAmount = Number(order.invoice?.paidAmount);
+
+      if (!order.invoice || Number.isNaN(invoiceTotalAmount) || Number.isNaN(invoicePaidAmount)) {
+        return order;
+      }
+
+      return {
+        ...order,
+        finalAmount: invoiceTotalAmount,
+        paidAmount: invoicePaidAmount,
+        paymentStatus:
+          invoicePaidAmount >= invoiceTotalAmount
+            ? 'paid'
+            : invoicePaidAmount > 0
+              ? 'partial'
+              : 'unpaid',
+      };
+    });
+
     const totalPages = Math.ceil(totalOrders / limit);
 
     return NextResponse.json({
       success: true,
-      orders,
+      orders: normalizedOrders,
       pagination: {
         currentPage: page,
         totalPages,

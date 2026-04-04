@@ -8,6 +8,7 @@ import api from "@/lib/apiClient";
 export function AuthProvider({ children }) {
   const isLoading = useAuthStore((state) => state.isLoading);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const authError = useAuthStore((state) => state.authError);
   const pathname = usePathname();
   const router = useRouter();
   const redirectedRef = useRef(false);
@@ -28,22 +29,16 @@ export function AuthProvider({ children }) {
     if (wasPublicRef.current) {
       wasPublicRef.current = false;
       useAuthStore.getState().fetchUser();
-
-      const timeout = setTimeout(() => {
-        const state = useAuthStore.getState();
-        if (state.isLoading && !state.isAuthenticated) {
-          useAuthStore.setState({ isLoading: false });
-          window.location.replace("/login");
-        }
-      }, 8_000);
-
-      return () => clearTimeout(timeout);
     }
   }, [pathname]);
 
   useEffect(() => {
     if (!pathname.startsWith("/dashboard")) return;
     if (isLoading) return;
+    if (authError) {
+      redirectedRef.current = false;
+      return;
+    }
     if (isAuthenticated) {
       redirectedRef.current = false;
       return;
@@ -51,20 +46,33 @@ export function AuthProvider({ children }) {
     if (redirectedRef.current) return;
     redirectedRef.current = true;
     router.replace("/login");
-  }, [pathname, isAuthenticated, isLoading, router]);
+  }, [authError, pathname, isAuthenticated, isLoading, router]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
     const interval = setInterval(async () => {
       try {
         await api.get("/api/auth/me");
-      } catch {
-        useAuthStore.getState().clearUser();
-        window.location.replace("/login");
+      } catch (error) {
+        if (error?.status === 401 || error?.status === 403) {
+          useAuthStore.getState().clearUser();
+          router.replace("/login");
+        }
       }
     }, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [isAuthenticated]);
+  }, [isAuthenticated, router]);
+
+  useEffect(() => {
+    if (!pathname.startsWith("/dashboard")) return;
+    if (!authError || isLoading || isAuthenticated) return;
+
+    const retryTimer = setTimeout(() => {
+      useAuthStore.getState().fetchUser({ retries: 0 });
+    }, 3_000);
+
+    return () => clearTimeout(retryTimer);
+  }, [authError, isAuthenticated, isLoading, pathname]);
 
   return <>{children}</>;
 }

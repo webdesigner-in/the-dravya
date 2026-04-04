@@ -60,8 +60,9 @@ function CustomerOrders({ customerId, ledger, formatDate }) {
           </tr>
         </thead>
         <tbody className="divide-y">
-          {orders.map((order) => (
-            <tr key={order._id} className="hover:bg-muted/50">
+          {orders.map((order) => {
+            return (
+              <tr key={order._id} className="hover:bg-muted/50">
               <td className="p-1 sm:p-1.5">
                 <Link
                   href={`/dashboard/orders?customer=${customerId}`}
@@ -90,7 +91,8 @@ function CustomerOrders({ customerId, ledger, formatDate }) {
                 ₹{(parseFloat(order.finalAmount || 0) - parseFloat(order.paidAmount || 0)).toFixed(2)}
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
         <tfoot className="bg-muted font-semibold">
           <tr>

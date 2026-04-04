@@ -66,6 +66,7 @@ export async function GET(request) {
           isGuestOrder:       { $eq: ['$orderType', 'guest'] },
           invoiceTotalAmount: { $arrayElemAt: ['$invoice.totalAmount', 0] },
           invoicePaidAmount:  { $arrayElemAt: ['$invoice.paidAmount',  0] },
+          invoiceBalanceAmount: { $arrayElemAt: ['$invoice.balanceAmount', 0] },
         },
       },
 
@@ -79,7 +80,7 @@ export async function GET(request) {
           guestPhone:   { $first: '$guestInfo.phone' },
           totalOrders:  { $sum: 1 },
           totalAmount:  { $sum: '$invoiceTotalAmount' },
-          paidAmount:   { $sum: '$invoicePaidAmount' },
+          dueAmount:    { $sum: '$invoiceBalanceAmount' },
           deliveredUnpaidOrders: {
             $sum: {
               $cond: [
@@ -142,8 +143,8 @@ export async function GET(request) {
           totalOrders:           1,
           deliveredUnpaidOrders: 1,
           totalAmount:           1,
-          paidAmount:            1,
-          dueAmount: { $subtract: ['$totalAmount', '$paidAmount'] },
+          dueAmount:             1,
+          paidAmount: { $subtract: ['$totalAmount', '$dueAmount'] },
         },
       },
 

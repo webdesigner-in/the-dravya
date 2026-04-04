@@ -74,6 +74,12 @@ export async function POST(request, { params }) {
 
     // Calculate payment amounts (must be before using 'paid' variable)
     const paid = parseFloat(paidAmount) || 0;
+    if (paid < 0 || paid > order.finalAmount) {
+      return NextResponse.json(
+        { error: `Paid amount must be between ₹0 and ₹${order.finalAmount.toFixed(2)}` },
+        { status: 400 }
+      );
+    }
     const balance = order.finalAmount - paid;
 
     // Calculate due date - only for unpaid/partial invoices
@@ -135,8 +141,12 @@ export async function POST(request, { params }) {
 
     const invoice = await Invoice.create(invoiceData);
 
-    // Update order with invoice reference
-    await Order.findByIdAndUpdate(order._id, { invoice: invoice._id });
+    // Keep the linked order's financial state aligned with the newly created invoice.
+    order.invoice = invoice._id;
+    order.paidAmount = paid;
+    order.paymentStatus =
+      paid >= order.finalAmount ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+    await order.save();
 
     // Create transaction if payment is made
     if (paid > 0) {
