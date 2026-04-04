@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import connectDB from '@/lib/mongodb';
-import User from '@/models/User';
-import { verifyToken, removeAuthCookie } from '@/lib/auth';
+import { invalidateSession, removeAuthCookie, verifyToken } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
 
 export async function POST() {
@@ -10,10 +8,8 @@ export async function POST() {
     const cookieStore = await cookies();
     const raw = cookieStore.get('auth-token')?.value;
     const decoded = raw ? verifyToken(raw) : null;
-
-    await connectDB();
-    if (decoded?.userId) {
-      await User.updateOne({ _id: decoded.userId }, { $inc: { tokenVersion: 1 } });
+    if (decoded?.sid) {
+      await invalidateSession(decoded.sid);
     }
 
     await removeAuthCookie();

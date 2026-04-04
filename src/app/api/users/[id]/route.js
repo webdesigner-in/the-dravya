@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, invalidateAllUserSessions } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
 import { handleApiError } from '@/lib/errorHandler';
 
@@ -67,16 +67,23 @@ export async function PUT(request, { params }) {
     }
 
     const mongoUpdate = { $set: updateData };
-    if (password && password.trim() !== '') {
-      mongoUpdate.$inc = { tokenVersion: 1 };
+
+    const currentUser = await User.findById(id).select('role isActive');
+    if (!currentUser) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
     const user = await User.findByIdAndUpdate(id, mongoUpdate, {
       new: true,
       runValidators: true,
     }).select('-password');
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+
+    const shouldInvalidateSessions =
+      (password && password.trim() !== '') ||
+      currentUser.role !== role;
+
+    if (shouldInvalidateSessions) {
+      await invalidateAllUserSessions(id);
     }
 
     return NextResponse.json({
@@ -115,6 +122,8 @@ export async function DELETE(request, { params }) {
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
+
+    await invalidateAllUserSessions(id);
 
     return NextResponse.json({ success: true, message: 'User deleted successfully' });
   } catch (error) {

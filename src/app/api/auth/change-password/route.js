@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
-import { getAuthUser } from '@/lib/auth';
+import { getAuthUser, invalidateAllUserSessions, removeAuthCookie } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
 
 export async function PUT(request) {
@@ -56,10 +56,12 @@ export async function PUT(request) {
     // Update password
     user.password = newPassword;
     await user.save();
+    await invalidateAllUserSessions(authUser.userId);
+    await removeAuthCookie();
 
     return NextResponse.json({
       success: true,
-      message: 'Password changed successfully',
+      message: 'Password changed successfully. Please log in again.',
     });
   } catch (error) {
     const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to change password');

@@ -10,6 +10,7 @@ import Order from '@/models/Order';
 import Product from '@/models/Product';
 import Route from '@/models/Route';
 import StockMovement from '@/models/StockMovement';
+import Session from '@/models/Session';
 import Transaction from '@/models/Transaction';
 import User from '@/models/User';
 import Vehicle from '@/models/Vehicle';
@@ -30,6 +31,7 @@ export function preloadModels() {
     Product,
     Route,
     StockMovement,
+    Session,
     Transaction,
     User,
     Vehicle,

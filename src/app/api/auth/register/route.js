@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import User from '@/models/User';
-import { generateToken, setAuthCookie } from '@/lib/auth';
+import { createAuthSession, generateToken, setAuthCookie } from '@/lib/auth';
 import { handleApiError } from '@/lib/errorHandler';
 import { checkRateLimit } from '@/lib/rateLimit';
 import { RATE_LIMITS } from '@/lib/constants';
@@ -66,11 +66,8 @@ export async function POST(request) {
       address,
     });
 
-    const token = generateToken(
-      user._id.toString(),
-      user.role,
-      user.tokenVersion ?? 0
-    );
+    const sessionId = await createAuthSession(user._id.toString(), user.role);
+    const token = generateToken(user._id.toString(), user.role, sessionId);
     await setAuthCookie(token);
 
     return NextResponse.json(
