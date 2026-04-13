@@ -156,64 +156,48 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
 
-    // If the order already has an invoice, keep its financial snapshot in sync
-    // with the edited order to avoid ledger/report mismatches.
+    // If the order already has an invoice, keep it in sync with the updated order
     if (order.invoice && body.items) {
       const invoice = await Invoice.findById(order.invoice);
 
       if (invoice) {
         const invoiceItems = order.items.map((item) => ({
-          product: item.product?._id || item.product,
-          description: item.product?.name || item.description || 'Product',
-          quantity: item.quantity,
-          price: item.price,
-          originalPrice: item.originalPrice,
+          product:            item.product?._id || item.product,
+          description:        item.product?.name || 'Product',
+          quantity:           item.quantity,
+          price:              item.price,
+          originalPrice:      item.originalPrice,
           discountPercentage: item.discountPercentage || 0,
-          subtotal: item.subtotal,
+          subtotal:           item.subtotal,
         }));
 
-        const currentPaidAmount = Math.min(invoice.paidAmount || 0, order.finalAmount || 0);
-        const nextStatus =
-          currentPaidAmount >= (order.finalAmount || 0)
-            ? 'paid'
-            : currentPaidAmount > 0
-              ? 'partial'
-              : 'sent';
+        // calculatedSubtotal = sum of actual (discounted) item prices — matches item rows
+        const calculatedSubtotal = order.items.reduce((s, i) => s + (i.subtotal || 0), 0);
 
-        invoice.items = invoiceItems;
-        invoice.subtotal = order.totalAmount || 0;
-        invoice.discount = order.discount || 0;
-        invoice.tax = order.tax || 0;
-        invoice.totalAmount = order.finalAmount || 0;
-        invoice.paidAmount = currentPaidAmount;
-        invoice.balanceAmount = Math.max((order.finalAmount || 0) - currentPaidAmount, 0);
-        invoice.status = nextStatus;
-        if (nextStatus === 'paid') {
-          invoice.dueDate = null;
-        }
-        if (order.orderType === 'guest') {
-          invoice.guestInfo = order.guestInfo;
-          invoice.customer = undefined;
-        } else {
-          invoice.customer = order.customer;
-          invoice.guestInfo = undefined;
-        }
+        // Cap paidAmount at new finalAmount (can't have paid more than the new total)
+        const cappedPaid = Math.min(invoice.paidAmount || 0, order.finalAmount || 0);
+        const newBalance = Math.max((order.finalAmount || 0) - cappedPaid, 0);
+        const newStatus  = cappedPaid >= (order.finalAmount || 0) ? 'paid'
+          : cappedPaid > 0 ? 'partial' : 'sent';
+
+        invoice.items         = invoiceItems;
+        invoice.subtotal      = calculatedSubtotal;
+        invoice.discount      = order.discount || 0;
+        invoice.tax           = order.tax || 0;
+        invoice.totalAmount   = order.finalAmount || 0;
+        invoice.paidAmount    = cappedPaid;
+        invoice.balanceAmount = newBalance;
+        invoice.status        = newStatus;
+        if (newStatus === 'paid') invoice.dueDate = null;
+
         await invoice.save();
 
-        if (order.paidAmount !== currentPaidAmount || order.paymentStatus !== (currentPaidAmount >= (order.finalAmount || 0)
-          ? 'paid'
-          : currentPaidAmount > 0
-            ? 'partial'
-            : 'unpaid')) {
-          order.paidAmount = currentPaidAmount;
-          order.paymentStatus =
-            currentPaidAmount >= (order.finalAmount || 0)
-              ? 'paid'
-              : currentPaidAmount > 0
-                ? 'partial'
-                : 'unpaid';
-          await order.save();
-        }
+        // Keep order payment fields aligned with the updated invoice
+        await Order.findByIdAndUpdate(id, {
+          paidAmount:    cappedPaid,
+          paymentStatus: cappedPaid >= (order.finalAmount || 0) ? 'paid'
+            : cappedPaid > 0 ? 'partial' : 'unpaid',
+        });
       }
     }
 

@@ -97,8 +97,12 @@ function CustomerOrders({ customerId, ledger, formatDate }) {
         <tfoot className="bg-muted font-semibold">
           <tr>
             <td colSpan="3" className="p-1 sm:p-1.5 text-right text-[8px] sm:text-[9px]">Totals:</td>
-            <td className="p-1 sm:p-1.5 text-right text-[8px] sm:text-[9px]">₹{ledger.totalAmount.toFixed(2)}</td>
-            <td className="p-1 sm:p-1.5 text-right text-[8px] sm:text-[9px] text-red-600">₹{ledger.dueAmount.toFixed(2)}</td>
+            <td className="p-1 sm:p-1.5 text-right text-[8px] sm:text-[9px]">
+              ₹{orders.reduce((s, o) => s + parseFloat(o.finalAmount || 0), 0).toFixed(2)}
+            </td>
+            <td className="p-1 sm:p-1.5 text-right text-[8px] sm:text-[9px] text-red-600">
+              ₹{orders.reduce((s, o) => s + Math.max(0, parseFloat(o.finalAmount || 0) - parseFloat(o.paidAmount || 0)), 0).toFixed(2)}
+            </td>
           </tr>
         </tfoot>
       </table>

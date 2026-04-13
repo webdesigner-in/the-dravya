@@ -111,7 +111,7 @@ export async function POST(request, { params }) {
       invoiceNumber,
       order: order._id,
       items: invoiceItems,
-      subtotal: originalSubtotal, // Use original subtotal (before discounts)
+      subtotal: calculatedSubtotal, // Sum of actual (discounted) item prices — matches item rows
       discount: order.discount || 0,
       tax: order.tax || 0,
       totalAmount: order.finalAmount, // Final amount after discounts and tax

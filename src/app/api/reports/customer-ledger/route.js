@@ -54,8 +54,6 @@ export async function GET(request) {
 
       {
         $addFields: {
-          // Regular customer → group by customer ObjectId (one row per customer)
-          // Guest order      → group by the order's own _id (each order = its own row)
           groupKey: {
             $cond: {
               if: { $and: [{ $ne: ['$customer', null] }, { $ne: ['$orderType', 'guest'] }] },
@@ -63,10 +61,10 @@ export async function GET(request) {
               else: { $toString: '$_id' },
             },
           },
-          isGuestOrder:       { $eq: ['$orderType', 'guest'] },
-          invoiceTotalAmount: { $arrayElemAt: ['$invoice.totalAmount', 0] },
-          invoicePaidAmount:  { $arrayElemAt: ['$invoice.paidAmount',  0] },
-          invoiceBalanceAmount: { $arrayElemAt: ['$invoice.balanceAmount', 0] },
+          isGuestOrder:        { $eq: ['$orderType', 'guest'] },
+          invoiceTotalAmount:  { $arrayElemAt: ['$invoice.totalAmount',   0] },
+          invoicePaidAmount:   { $arrayElemAt: ['$invoice.paidAmount',    0] },
+          invoiceBalanceAmount:{ $arrayElemAt: ['$invoice.balanceAmount', 0] },
         },
       },
 
@@ -80,6 +78,7 @@ export async function GET(request) {
           guestPhone:   { $first: '$guestInfo.phone' },
           totalOrders:  { $sum: 1 },
           totalAmount:  { $sum: '$invoiceTotalAmount' },
+          paidAmount:   { $sum: '$invoicePaidAmount' },
           dueAmount:    { $sum: '$invoiceBalanceAmount' },
           deliveredUnpaidOrders: {
             $sum: {
@@ -143,8 +142,8 @@ export async function GET(request) {
           totalOrders:           1,
           deliveredUnpaidOrders: 1,
           totalAmount:           1,
+          paidAmount:            1,
           dueAmount:             1,
-          paidAmount: { $subtract: ['$totalAmount', '$dueAmount'] },
         },
       },
 

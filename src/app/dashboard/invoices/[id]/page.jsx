@@ -226,7 +226,7 @@ export default function InvoiceDetailPage() {
                     <td className="py-4 px-2 text-right">
                       <div className="space-y-1">
                         {(() => {
-                          // For new invoices with originalPrice data
+                          // Show original price with strikethrough if a discount was applied
                           if (item.originalPrice && item.originalPrice > item.price) {
                             return (
                               <>
@@ -244,30 +244,7 @@ export default function InvoiceDetailPage() {
                               </>
                             );
                           }
-                          
-                          // For existing invoices, use product price as original if there's a discount
-                          if (invoice.discount > 0 && item.product?.price && item.product.price > item.price) {
-                            const originalPrice = item.product.price;
-                            const discountPercentage = Math.round(((originalPrice - item.price) / originalPrice) * 100);
-                            
-                            return (
-                              <>
-                                <div className="text-xs text-gray-500 line-through">
-                                  ₹{originalPrice.toFixed(2)}
-                                </div>
-                                <div className="text-sm font-semibold text-green-600">
-                                  ₹{item.price.toFixed(2)}
-                                </div>
-                                {discountPercentage > 0 && (
-                                  <div className="text-xs text-green-600 font-medium">
-                                    {discountPercentage}% OFF
-                                  </div>
-                                )}
-                              </>
-                            );
-                          }
-                          
-                          // Default display for no discount
+                          // No discount — show actual price
                           return (
                             <div className="text-sm font-semibold text-gray-900">
                               ₹{item.price.toFixed(2)}
@@ -279,7 +256,6 @@ export default function InvoiceDetailPage() {
                     <td className="py-4 px-2 sm:px-4 text-right">
                       <div className="space-y-1">
                         {(() => {
-                          // For new invoices with originalPrice data
                           if (item.originalPrice && item.originalPrice > item.price) {
                             return (
                               <>
@@ -295,29 +271,6 @@ export default function InvoiceDetailPage() {
                               </>
                             );
                           }
-                          
-                          // For existing invoices, use product price as original if there's a discount
-                          if (invoice.discount > 0 && item.product?.price && item.product.price > item.price) {
-                            const originalPrice = item.product.price;
-                            const originalTotal = originalPrice * item.quantity;
-                            const savings = (originalPrice - item.price) * item.quantity;
-                            
-                            return (
-                              <>
-                                <div className="text-xs text-gray-500 line-through">
-                                  ₹{originalTotal.toFixed(2)}
-                                </div>
-                                <div className="text-sm font-bold text-gray-900">
-                                  ₹{item.subtotal.toFixed(2)}
-                                </div>
-                                <div className="text-xs text-green-600 font-medium">
-                                  You Save: ₹{savings.toFixed(2)}
-                                </div>
-                              </>
-                            );
-                          }
-                          
-                          // Default display for no discount
                           return (
                             <div className="text-sm font-bold text-gray-900">
                               ₹{item.subtotal.toFixed(2)}
@@ -341,7 +294,7 @@ export default function InvoiceDetailPage() {
               </div>
               {invoice.discount > 0 && (
                 <div className="flex justify-between text-xs sm:text-sm text-green-600">
-                  <span>Discount:</span>
+                  <span>Discount saved:</span>
                   <span>-₹{invoice.discount.toFixed(2)}</span>
                 </div>
               )}
@@ -356,15 +309,21 @@ export default function InvoiceDetailPage() {
                 <span>₹{invoice.totalAmount.toFixed(2)}</span>
               </div>
               {invoice.paidAmount > 0 && (
-                <div className="flex justify-between text-xs sm:text-sm">
-                  <span className="text-muted-foreground">Paid:</span>
-                  <span>₹{invoice.paidAmount.toFixed(2)}</span>
+                <div className="flex justify-between text-xs sm:text-sm text-green-600">
+                  <span>Paid:</span>
+                  <span>-₹{invoice.paidAmount.toFixed(2)}</span>
                 </div>
               )}
               {invoice.balanceAmount > 0 && (
-                <div className="flex justify-between font-semibold text-red-600 text-xs sm:text-sm">
+                <div className="flex justify-between font-semibold text-red-600 text-xs sm:text-sm border-t pt-2">
                   <span>Balance Due:</span>
                   <span>₹{invoice.balanceAmount.toFixed(2)}</span>
+                </div>
+              )}
+              {invoice.balanceAmount <= 0 && invoice.paidAmount > 0 && (
+                <div className="flex justify-between font-semibold text-green-600 text-xs sm:text-sm border-t pt-2">
+                  <span>Status:</span>
+                  <span>Fully Paid ✓</span>
                 </div>
               )}
             </div>
