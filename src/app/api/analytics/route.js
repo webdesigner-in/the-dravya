@@ -262,10 +262,72 @@ export async function GET(request) {
       topProducts,
     };
 
+    // ── Trend data for line charts — adapts to selected period ──────────────
+    // If a specific month is selected → daily breakdown for that month
+    // If "all" → last 12 months breakdown
+    let trendBuckets = [];
+
+    if (month && month !== 'all') {
+      // Daily buckets for the selected month
+      const [yr, mo] = month.split('-');
+      const year = parseInt(yr), monthNum = parseInt(mo);
+      const daysInMonth = new Date(year, monthNum, 0).getDate();
+      for (let day = 1; day <= daysInMonth; day++) {
+        const start = new Date(year, monthNum - 1, day, 0, 0, 0, 0);
+        const end   = new Date(year, monthNum - 1, day, 23, 59, 59, 999);
+        trendBuckets.push({ label: `${day}`, start, end });
+      }
+    } else {
+      // Monthly buckets for last 12 months
+      const now12 = new Date();
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now12.getFullYear(), now12.getMonth() - i, 1);
+        trendBuckets.push({
+          label: d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' }),
+          start: new Date(d.getFullYear(), d.getMonth(), 1),
+          end:   new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999),
+        });
+      }
+    }
+
+    // Fetch all invoices once for trend calculation
+    const allInvoicesForTrend = await Invoice.find({})
+      .select('totalAmount paidAmount order')
+      .lean()
+      .maxTimeMS(QUERY_TIMEOUTS.FAST);
+
+    const monthlyTrend = await Promise.all(
+      trendBuckets.map(async (bucket) => {
+        const mOrders = await Order.find({ createdAt: { $gte: bucket.start, $lte: bucket.end } })
+          .select('_id status paymentStatus finalAmount paidAmount')
+          .lean()
+          .maxTimeMS(QUERY_TIMEOUTS.NORMAL);
+
+        const mOrderIds = new Set(mOrders.map(o => o._id.toString()));
+        const mInv = allInvoicesForTrend.filter(inv => inv.order && mOrderIds.has(inv.order.toString()));
+
+        const revenue   = mInv.reduce((s, inv) => s + (inv.totalAmount || 0), 0);
+        const collected = mInv.reduce((s, inv) => s + (inv.paidAmount  || 0), 0);
+        const delivered = mOrders.filter(o => o.status === 'delivered').length;
+        const cancelled = mOrders.filter(o => o.status === 'cancelled').length;
+
+        return {
+          label:       bucket.label,
+          revenue:     parseFloat(revenue.toFixed(2)),
+          collected:   parseFloat(collected.toFixed(2)),
+          outstanding: parseFloat((revenue - collected).toFixed(2)),
+          orders:      mOrders.length,
+          delivered,
+          cancelled,
+        };
+      })
+    );
+
     return NextResponse.json({
       success: true,
       analytics,
       month,
+      monthly: monthlyTrend,
     });
   } catch (error) {
     const { error: errorMessage, statusCode, details } = handleApiError(error, 'Failed to fetch analytics data');

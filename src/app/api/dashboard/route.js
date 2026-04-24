@@ -44,13 +44,13 @@ export async function GET(request) {
       overdueInvoices,
       creditLimitWarnings
     ] = await Promise.all([
-      // Today's orders - orders scheduled for delivery today
+      // Today's orders - orders scheduled for delivery today OR created today (if no deliveryDate)
       Order.find({
         ...orderFilter,
-        deliveryDate: { 
-          $gte: startOfToday,
-          $lte: endOfToday
-        }
+        $or: [
+          { deliveryDate: { $gte: startOfToday, $lte: endOfToday } },
+          { deliveryDate: null, createdAt: { $gte: startOfToday, $lte: endOfToday } },
+        ],
       })
         .select('orderNumber customer orderType guestInfo finalAmount status deliveryDate createdAt')
         .populate('customer', 'name')

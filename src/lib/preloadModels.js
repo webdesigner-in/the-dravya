@@ -15,6 +15,7 @@ import Transaction from '@/models/Transaction';
 import User from '@/models/User';
 import Vehicle from '@/models/Vehicle';
 import Warehouse from '@/models/Warehouse';
+import PriceHistory from '@/models/PriceHistory';
 import Notification from '@/models/Notification';
 
 /**
@@ -29,6 +30,7 @@ export function preloadModels() {
     Invoice,
     Order,
     Product,
+    PriceHistory,
     Route,
     StockMovement,
     Session,

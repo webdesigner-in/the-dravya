@@ -37,14 +37,34 @@ export async function PUT(request, { params }) {
     const { id } = await params;
     const body = await request.json();
 
+    const before = await Product.findById(id).lean();
+    if (!before) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+
     const product = await Product.findByIdAndUpdate(
       id,
       { $set: body },
       { new: true, runValidators: true }
     );
 
-    if (!product) {
-      return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+    if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+
+    // Auto-record price history if cost or selling price changed
+    const newCost   = parseFloat(body.costPrice  ?? before.costPrice);
+    const newSell   = parseFloat(body.price       ?? before.price);
+    const oldCost   = parseFloat(before.costPrice);
+    const oldSell   = parseFloat(before.price);
+
+    if (Math.abs(newCost - oldCost) > 0.001 || Math.abs(newSell - oldSell) > 0.001) {
+      const PriceHistory = (await import('@/models/PriceHistory')).default;
+      await PriceHistory.create({
+        product:      id,
+        costPrice:    newCost,
+        sellingPrice: newSell,
+        // Store as UTC first day of current month
+        effectiveFrom: new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)),
+        notes: `Price updated from ₹${oldSell} → ₹${newSell} (cost: ₹${oldCost} → ₹${newCost})`,
+        recordedBy:   authUser.userId,
+      });
     }
 
     return NextResponse.json({ success: true, product });

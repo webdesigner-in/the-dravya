@@ -141,6 +141,18 @@ export async function POST(request, { params }) {
 
     const invoice = await Invoice.create(invoiceData);
 
+    // If initial payment was made at invoice creation, record it in paymentHistory
+    if (paid > 0) {
+      invoice.paymentHistory.push({
+        amount:        paid,
+        paymentMethod: order.paymentMethod || 'cash',
+        date:          new Date(),
+        notes:         invoiceStatus === 'paid' ? 'Full payment at invoice creation' : `Partial payment of ₹${paid} at invoice creation`,
+        recordedBy:    authUser.userId,
+      });
+      await invoice.save();
+    }
+
     // Keep the linked order's financial state aligned with the newly created invoice.
     order.invoice = invoice._id;
     order.paidAmount = paid;

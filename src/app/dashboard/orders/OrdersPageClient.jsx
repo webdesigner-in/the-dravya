@@ -62,6 +62,11 @@ import { generateUPIString, generateUPIQRCode } from "@/lib/upi";
 import api from "@/lib/apiClient";
 import OrdersOrdersList from "./OrdersOrdersList";
 
+const getTodayDate = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 export default function OrdersPageClient() {
   const searchParams = useSearchParams();
   const customerIdFromUrl = searchParams.get("customer");
@@ -179,12 +184,17 @@ export default function OrdersPageClient() {
     paymentStatus: "unpaid",
     paidAmount: "0",
     paymentMethod: "cash",
-    deliveryDate: "",
+    deliveryDate: getTodayDate(),
     notes: "",
   });
 
+  const getTodayStr = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+
   const [invoiceData, setInvoiceData] = useState({
-    dueDate: "",
+    dueDate: getTodayStr(),
     paymentTerms: "Due on receipt",
     paymentStatus: "unpaid",
     paidAmount: "0",
@@ -228,7 +238,7 @@ export default function OrdersPageClient() {
   useEffect(() => {
     if (selectedOrder && isInvoiceDialogOpen) {
       setInvoiceData({
-        dueDate: "",
+        dueDate: getTodayStr(),
         paymentTerms: selectedOrder.paymentStatus === "paid" ? "Paid in full" : "Due on receipt",
         paymentStatus: selectedOrder.paymentStatus || "unpaid",
         paidAmount: selectedOrder.paidAmount?.toString() || "0",
@@ -492,7 +502,7 @@ export default function OrdersPageClient() {
       paymentStatus: "unpaid",
       paidAmount: "0",
       paymentMethod: "cash",
-      deliveryDate: "",
+      deliveryDate: getTodayDate(),
       notes: "",
     });
     setCustomerSearchQuery("");
@@ -679,7 +689,7 @@ export default function OrdersPageClient() {
       });
       setIsInvoiceDialogOpen(false);
       setSelectedOrder(null);
-      setInvoiceData({ dueDate: "", paymentTerms: "Due on receipt", paymentStatus: "unpaid", paidAmount: "0", notes: "", terms: "" });
+      setInvoiceData({ dueDate: getTodayStr(), paymentTerms: "Due on receipt", paymentStatus: "unpaid", paidAmount: "0", notes: "", terms: "" });
     } catch (error) {
       toast.error(getUserFriendlyError(error));
     } finally {

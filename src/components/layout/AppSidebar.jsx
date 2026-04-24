@@ -18,6 +18,7 @@ import {
   MapPin,
   LogOut,
   Calculator,
+  TrendingUp,
 } from "lucide-react";
 import {
   Sidebar,
@@ -75,6 +76,7 @@ const adminOnlyItems = [
   { title: "Routes", url: "/dashboard/routes", icon: MapPin },
   { title: "Transactions", url: "/dashboard/transactions", icon: IndianRupee },
   { title: "Analytics", url: "/dashboard/analytics", icon: BarChart3 },
+  { title: "Profit Analysis", url: "/dashboard/analytics/profit", icon: TrendingUp },
   { title: "User Management", url: "/dashboard/users", icon: Users },
 ];
 
